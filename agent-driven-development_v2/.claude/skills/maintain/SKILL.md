@@ -22,7 +22,7 @@ SDD スキルセットを変更するときは必ずこのスキルを通す。�
 | 実装者ステータス契約（DONE/DONE_WITH_CONCERNS/BLOCKED/NEEDS_CONTEXT と報告書式） | implementer-prompt.md | implement の対応表・エスカレーション梯子 |
 | review レポート書式・判定値（通過 \| implement へ差し戻し）・2モード | review | implement・verify・auto 審査観点・sdd バイパス節 |
 | analyze/review レポートの永続化先（analyze-report.md・review-report.md はフィーチャーレビューのみ） | analyze・review | sdd の「state.md が壊れている・矛盾している場合」節・CLAUDE.md 成果物表・**この契約表** |
-| 作業ブランチ/worktree の作成タイミング（sdd 起動時＝specify より前。specs/ も code も同一ブランチ上で生み承認ごとにコミット） | sdd の起動手順5・ゲート運用 | implement の前提チェック・auto の例外①・**この契約表** |
+| 作業ブランチ/worktree の作成タイミング（sdd 起動時＝constitution・specify より前。docs/constitution.md も specs/ も code も同一ブランチ上で生み承認ごとにコミット） | sdd の起動手順4・ゲート運用 | implement の前提チェック・auto の例外①・verify の統合選択肢（worktree 後始末）・**この契約表** |
 
 契約の**事実の写し**（フェーズ数等）をこの表自体が含むため、契約を変えたらこの表も追随対象になる——1ファイル修正の失敗パターンを自分で犯さない。
 
