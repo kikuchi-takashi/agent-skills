@@ -12,6 +12,7 @@
 - 各フェーズスキル（`specify` 等）は単体でも呼び出し可
 - **受領レビュー対応**: 「PR コメントを反映して」「レビュー指摘に対応して」→ `receive-review` が指摘を検証・分類し、完了済み機能を再オープンして修正ルートへ
 - **スキルセット自体の変更**: 「スキルを改善して」「新スキルを追加して」→ `maintain` が契約（state.md 書式・フェーズ列挙・description 規約）を守らせる
+- **不具合報告からの改善**: 「〇〇スキルがうまく動かなかった」→ `troubleshoot` が証拠を確認し原因を切り分け、承認を得た上で専用ブランチに修正を積んで PR を作成する
 
 ## フェーズ
 
@@ -44,6 +45,7 @@ constitution → specify → clarify → plan → tasks → analyze → implemen
 ```
 .claude/skills/   sdd / auto（オーケストレーター）＋9フェーズスキル（テンプレート同梱）
                   ＋receive-review（受領レビュー対応）＋maintain（メンテ用）
+                  ＋troubleshoot（不具合報告からの改善＋PR作成）
 .claude/agents/   sdd-improver（評価・改善ループ専門エージェント。maintain から派遣）
 specs/            機能ごとの成果物（YYYY-MM-DD-機能名）
 docs/             constitution.md（初回に生成）・maintain-log.md（メンテ却下記録）
