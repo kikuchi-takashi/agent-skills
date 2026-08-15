@@ -36,6 +36,8 @@ done
 # 5. 節名参照の実在（番号参照の張り替え先が消えていないか）
 grep -q '統合方法の選択肢'   .claude/skills/verify/SKILL.md  || { echo 'NG 参照: verify「統合方法の選択肢」'; fail=1; }
 grep -q '## 質問の優先順位' .claude/skills/clarify/SKILL.md || { echo 'NG 参照: clarify「質問の優先順位」'; fail=1; }
+grep -q '## 変更の種類別チェックリスト' .claude/skills/maintain/SKILL.md || { echo 'NG 参照: maintain「変更の種類別チェックリスト」'; fail=1; }
+grep -q '## 変更後の必須検証（コミット前）' .claude/skills/maintain/SKILL.md || { echo 'NG 参照: maintain「変更後の必須検証（コミット前）」'; fail=1; }
 
 # 6. 150行閾値の警告（失敗にはしない。description 規約の分割検討ライン）
 for d in .claude/skills/*/; do

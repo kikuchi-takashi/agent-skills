@@ -22,9 +22,9 @@ SDD スキルセットを変更するときは必ずこのスキルを通す。�
 | 実装者ステータス契約（DONE/DONE_WITH_CONCERNS/BLOCKED/NEEDS_CONTEXT と報告書式） | implementer-prompt.md | implement の対応表・エスカレーション梯子 |
 | review レポート書式・判定値（通過 \| implement へ差し戻し）・2モード | review | implement・verify・auto 審査観点・sdd バイパス節 |
 | analyze/review レポートの永続化先（analyze-report.md・review-report.md はフィーチャーレビューのみ） | analyze・review | sdd の「state.md が壊れている・矛盾している場合」節・CLAUDE.md 成果物表・**この契約表** |
-| 作業ブランチ/worktree の作成タイミング（sdd 起動時＝constitution・specify より前。docs/constitution.md も specs/ も code も同一ブランチ上で生み承認ごとにコミット） | sdd の起動手順4・ゲート運用 | implement の前提チェック・auto の例外①・verify の統合選択肢（worktree 後始末）・**この契約表** |
-| 不具合報告起点の改善→PR ルート（実行可否の確認・fix/skill-* を main から分岐・PR 本文の順序） | troubleshoot | maintain のこの表と下の誘導・CLAUDE.md 使い方と構成 |
-| `docs/maintain-log.md` の書式（1行＝`[新スキル却下]`\|`[不具合却下]`・日付・依頼/報告内容・却下理由。無ければ新規作成） | この契約表 | maintain の C 項・troubleshoot の却下記録 |
+| 作業ブランチ/worktree の作成タイミング（sdd 起動時＝constitution・specify より前。docs/constitution.md も specs/ も code も同一ブランチ上で生み承認ごとにコミット） | sdd の起動手順4・ゲート運用 | implement の前提チェック・auto の例外①・verify の統合選択肢（worktree 後始末）・troubleshoot のブランチ〜PR 手順・**この契約表** |
+| 不具合報告起点の改善→PR ルート（実行可否の確認・修正対象リポジトリの同定・fix/skill-* を main から分岐・PR 本文の順序） | troubleshoot | maintain のこの表と下の誘導・CLAUDE.md 使い方と構成 |
+| `docs/maintain-log.md` の書式（1行＝`[新スキル却下]`\|`[不具合却下]`・日付・依頼/報告内容・却下理由。無ければ新規作成） | この契約表 | maintain の C 項・troubleshoot の却下記録・CLAUDE.md の構成（docs/ 行） |
 
 契約の**事実の写し**（フェーズ数等）をこの表自体が含むため、契約を変えたらこの表も追随対象になる——1ファイル修正の失敗パターンを自分で犯さない。
 
@@ -47,6 +47,7 @@ SDD スキルセットを変更するときは必ずこのスキルを通す。�
 
 **C. 独立スキルの追加**（maintain 自身のような非フェーズスキル）
 - **先に「無い状態での失敗」を1件示す**（摩擦ログ・誤発火・実際に困った事例）。「たぶん要る」で新スキルを書かない。示せなければ**却下**し、`docs/maintain-log.md` に `[新スキル却下] 日付・依頼・却下理由` を1行追記する（次回の重複依頼はここと照合。同ファイルには troubleshoot が `[不具合却下]` 行も書くため、種別プレフィクスで区別する）
+- **採用した場合も** `docs/maintain-log.md` に `[新スキル採用] 日付・スキル名・根拠事例` を1行残す（C 項を履行した証跡。後から「なぜ要ったか」を検証できるようにする）
 - description に「フェーズスキルではないため sdd からは呼ばれない」相当の一文を入れる（sdd の自動発火と競合させない）
 - 発火シミュレーション必須（このスキルが発火すべき正例＋sdd が勝つべき負例「〜を作って」）
 - CLAUDE.md の構成に1行追加
