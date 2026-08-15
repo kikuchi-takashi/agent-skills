@@ -23,8 +23,9 @@ SDD スキルセットを変更するときは必ずこのスキルを通す。�
 | review レポート書式・判定値（通過 \| implement へ差し戻し）・2モード | review | implement・verify・auto 審査観点・sdd バイパス節 |
 | analyze/review レポートの永続化先（analyze-report.md・review-report.md はフィーチャーレビューのみ） | analyze・review | sdd の「state.md が壊れている・矛盾している場合」節・CLAUDE.md 成果物表・**この契約表** |
 | 作業ブランチ/worktree の作成タイミング（sdd 起動時＝constitution・specify より前。docs/constitution.md も specs/ も code も同一ブランチ上で生み承認ごとにコミット） | sdd の起動手順4・ゲート運用 | implement の前提チェック・auto の例外①・verify の統合選択肢（worktree 後始末）・troubleshoot のブランチ〜PR 手順・**この契約表** |
-| 不具合報告起点の改善→PR ルート（実行可否の確認・修正対象リポジトリの同定・fix/skill-* を main から分岐・PR 本文の順序） | troubleshoot | maintain のこの表と下の誘導・CLAUDE.md 使い方と構成 |
-| `docs/maintain-log.md` の書式（1行＝`[新スキル却下]`\|`[不具合却下]`・日付・依頼/報告内容・却下理由。無ければ新規作成） | この契約表 | maintain の C 項・troubleshoot の却下記録・CLAUDE.md の構成（docs/ 行） |
+| 不具合報告起点の改善→PR ルート（実行可否の確認・修正対象リポジトリの同定・fix/skill-* を main から分岐・PR 本文の順序） | troubleshoot | maintain のこの表と下の誘導・CLAUDE.md 使い方と構成・`.claude/agents/sdd-improver.md`（委譲条項） |
+| `docs/maintain-log.md` の書式（1行＝`[新スキル採用]`\|`[新スキル却下]`\|`[不具合却下]`・日付・依頼/報告内容・理由。無ければ新規作成） | この契約表 | maintain の C 項・troubleshoot の却下記録・CLAUDE.md の構成（docs/ 行） |
+| `sdd-improver` の派遣方法（general-purpose に `.claude/agents/sdd-improver.md` のパスを渡し Read で従わせる） | maintain の改善ループ節 | troubleshoot の手順2・5（参照のみ） |
 
 契約の**事実の写し**（フェーズ数等）をこの表自体が含むため、契約を変えたらこの表も追随対象になる——1ファイル修正の失敗パターンを自分で犯さない。
 

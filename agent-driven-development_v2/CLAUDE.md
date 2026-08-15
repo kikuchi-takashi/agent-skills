@@ -48,5 +48,6 @@ constitution → specify → clarify → plan → tasks → analyze → implemen
                   ＋troubleshoot（不具合報告からの改善＋PR作成）
 .claude/agents/   sdd-improver（評価・改善ループ専門エージェント。maintain / troubleshoot から派遣）
 specs/            機能ごとの成果物（YYYY-MM-DD-機能名）
-docs/             constitution.md（初回に生成）・maintain-log.md（却下記録: 新スキル却下／不具合却下。初回追記時に生成）
+docs/             constitution.md（初回に生成）・maintain-log.md（採用/却下の記録）
+                  ・trials/（実戦トライアルの摩擦ログ）・genesis/（設計記録）
 ```
