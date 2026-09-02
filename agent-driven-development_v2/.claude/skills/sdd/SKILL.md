@@ -32,6 +32,7 @@ description: "仕様駆動開発のオーケストレーター。新しい機能
 4. **作業ブランチとフォルダの作成**: **新機能の作業ブランチは原則 main（または統合済みの既定ブランチ）から分岐する**——別機能の未統合ブランチの上に積まない（未完成の成果物を巻き込む・二重の憲法を生む事故を防ぐ）。docs/constitution.md は初回機能が main に統合された時点で main に乗るため、2機能目以降は main から分岐すれば既存 constitution を引き継げる（手順5の再承認スキップの前提）。現在ブランチが main/master なら、**先に作業ブランチ（例: `feature/YYYY-MM-DD-機能名`）を作る**——この機能の成果物（docs/constitution.md・specs/ 一式・実装コード）を最初から**すべて同じブランチ上で生む**（main や worktree 外に取り残さない）。worktree で実装を回す運用（implement のサブエージェントを worktree 隔離で派遣する等）では、**この時点で worktree を作り、以降の全フェーズ（次の constitution チェックを含む）をその worktree 内で実行する**——成果物を元の作業ディレクトリに置くと、worktree 側のブランチ＝PR に含まれない。続けて `specs/YYYY-MM-DD-機能名/`（日付は開始当日、機能名は kebab-case）を作成し state.md を初期化する。同名フォルダが既にある場合は機能名を具体化して区別する（例: `-2` を付けるのではなく `todo-cli-export` のように内容で分ける）。フルオートでは作業ブランチ作成の確認を省き無確認で作る（auto 参照）。
 5. **constitution チェック**: `docs/constitution.md` がなければ、先に constitution スキルを呼ぶ。constitution の承認はプロジェクトで一度だけ（手順4でフォルダと state.md が既に作られているため、承認履歴に直接書く。作業ブランチ/worktree の中で起草するので docs/constitution.md も同じブランチに乗り PR に含まれる）。2機能目以降は既存の constitution をそのまま使い、再承認は不要。
 6. **フェーズ実行**: 現在フェーズに対応するスキルを Skill ツールで呼ぶ。フェーズ完了→承認→state.md 更新→次フェーズ、を繰り返す。
+   **例外**: verify 完了時（現在フェーズ→「完了」）は verify 自身が state.md を更新する（maintain 契約表参照）。
 
 ## フェーズ順序と対応スキル
 
@@ -85,7 +86,7 @@ description: "仕様駆動開発のオーケストレーター。新しい機能
 - YYYY-MM-DD HH:MM clarify 自動通過（曖昧箇所ゼロ）
 - YYYY-MM-DD HH:MM <フェーズ名> 自動承認（auto、審査: <一言>）
 ## フェーズ内進捗（implement 中とフルオートの修正ループ中のみ）
-- [ ] T1: <タスク名>（サブエージェント | 直接）
+- [ ] T1: <タスク名>（サブエージェント | 直接／タスクレビュー: 未 | 通過 | 差し戻しN回）
 ## 差し戻し履歴
 - YYYY-MM-DD HH:MM <戻したフェーズ> 理由: 〜
 - YYYY-MM-DD HH:MM ルート変更: バイパス→フル（理由: 〜）
