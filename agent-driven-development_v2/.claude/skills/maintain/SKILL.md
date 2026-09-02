@@ -9,7 +9,7 @@ SDD スキルセットを変更するときは必ずこのスキルを通す。�
 **互いに契約で結ばれた1つのシステム**である。1ファイルだけ見て直すと必ず境界が壊れる
 （実績: 過去の全監査で、指摘は単一スキルの欠陥ではなく「スキル間の境界」に集中した）。
 
-## 壊してはいけない契約（変更前に必ず確認）
+## 壊してはいけない契約（契約表。変更前に必ず確認）
 
 | 契約 | 正（single source of truth） | 変更時に追随が必要な場所 |
 |---|---|---|
@@ -17,7 +17,7 @@ SDD スキルセットを変更するときは必ずこのスキルを通す。�
 | フェーズ順序と数（現在9: constitution→…→verify） | sdd のフェーズ表 | sdd の description「9フェーズ」・列挙値・CLAUDE.md フェーズ図と構成・auto 審査観点表・**この契約表** |
 | description 規約 | この表の下の段落 | 新規スキル全部 |
 | テンプレート同梱 | 各スキル配下の template.md | SKILL.md は参照のみ（規則の二重管理禁止）・CLAUDE.md の成果物テンプレート表・auto 審査観点（plan/spec-lite 行） |
-| 承認・差し戻しの記録責務 | sdd（各フェーズスキルは自分では記録しない）。**例外: 現在フェーズ→「完了」への更新のみ verify 自身が行う**（verify は単体呼び出しが多く、sdd がループを畳んで再開する保証がないため） | 新フェーズスキルにも「記録は sdd の責務」を明記・verify の完了処理・receive-review の手順4（この例外への追認） |
+| 承認・差し戻しの記録責務（各フェーズスキルは自分では記録しない。例外: 現在フェーズ→「完了」の更新のみ verify 自身。根拠も同所） | sdd の起動手順6 | 新フェーズスキルにも「記録は sdd の責務」を明記・verify の前提チェック/手順3/手順6・receive-review の手順4・auto の手順2・**この契約表** |
 | バイパスルート | sdd のバイパス節 | implement・verify・auto・receive-review・spec-lite-template・CLAUDE.md・**この契約表** |
 | 実装者ステータス契約（DONE/DONE_WITH_CONCERNS/BLOCKED/NEEDS_CONTEXT と報告書式） | implementer-prompt.md | implement の対応表・エスカレーション梯子 |
 | review レポート書式・判定値（通過 \| implement へ差し戻し）・2モード | review | implement・verify・auto 審査観点・sdd バイパス節 |

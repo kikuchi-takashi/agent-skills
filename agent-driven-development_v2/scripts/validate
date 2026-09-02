@@ -39,6 +39,8 @@ grep -q '## 質問の優先順位' .claude/skills/clarify/SKILL.md || { echo 'NG
 grep -q '## 変更の種類別チェックリスト' .claude/skills/maintain/SKILL.md || { echo 'NG 参照: maintain「変更の種類別チェックリスト」'; fail=1; }
 grep -q '## 変更後の必須検証（コミット前）' .claude/skills/maintain/SKILL.md || { echo 'NG 参照: maintain「変更後の必須検証（コミット前）」'; fail=1; }
 grep -q '## 改善ループの回し方' .claude/skills/maintain/SKILL.md || { echo 'NG 参照: maintain「改善ループの回し方」'; fail=1; }
+grep -q '## 壊してはいけない契約（契約表' .claude/skills/maintain/SKILL.md || { echo 'NG 参照: maintain「壊してはいけない契約（契約表」'; fail=1; }
+grep -q '修正ループ: N/10' .claude/skills/sdd/SKILL.md || { echo 'NG 契約: state.md 修正ループ行'; fail=1; }
 grep -q 'fix/skill-' .claude/skills/troubleshoot/SKILL.md || { echo 'NG 契約: troubleshoot のブランチ名規約'; fail=1; }
 grep -q '\[不具合却下\]' .claude/skills/troubleshoot/SKILL.md || { echo 'NG 契約: troubleshoot の却下記録書式'; fail=1; }
 
