@@ -2,9 +2,9 @@
 name: pptx-create
 description: "要件・原稿・資料から、編集可能なPowerPoint（.pptx）を新規に設計・生成する。聴衆と目的の整理、主張を一文で書くスライド構成、生成前のデザインロック、python-pptxによる生成、描画画像とlintによる品質確認までを一続きに行う。「PPTを作って」「スライドにまとめて」「プレゼン資料を作成して」「提案書をパワポで」など、新しいデッキを作るときに使う。既存デッキの修正は pptx-edit、監査だけなら pptx-review を使う。"
 license: MIT
-compatibility: "Python 3.9+ と python-pptx（pip install python-pptx）。視覚確認に LibreOffice（soffice）と Poppler（pdftoppm）。代替として pptxgenjs（Node.js）も可。"
+compatibility: "Python 3.9+ と python-pptx（lxml、Pillow、XlsxWriter を含む）。視覚確認は pptx-review 同梱の Pillow 描画で行い、外部ツールやネットワークは不要。"
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   publisher: "agent-skills"
 ---
 
@@ -42,11 +42,13 @@ metadata:
 
 ### 4. 生成（`deck/build.py`）
 
-`references/engine-notes.md` の骨格に従い、1本の python-pptx スクリプトで全ページを生成する。座標・色・サイズはすべてロックの定数から導き、スクリプト内に直値を散らさない。図表は原則ネイティブ（`add_chart`、`add_table`）で作り、画像化しない。発表者ノートに話す内容と出典を入れる。
+`references/engine-notes.md` の骨格に従い、1本の python-pptx スクリプトで全ページを生成する。座標・色・サイズはすべてロックの定数から導き、スクリプト内に直値を散らさない。積む・並べる・下端に置くは骨格のヘルパー（`vstack`、`spread`、`content_band`、`bottom_note`）で計算し、手で y を置かない。図表は原則ネイティブ（`add_chart`、`add_table`）で作り、画像化しない。発表者ノートに話す内容と出典を入れる。
+
+実行環境に追加インストールやネットワークが無いことがある。必要なライブラリが無ければ、純 Python のものは同梱して `sys.path` に加える（`references/engine-notes.md` 1 節）。1回の実行に時間の上限がある環境では、生成と描画を数枚ずつに分ける。
 
 ### 5. 品質確認（`deck/qa/`）
 
-`references/qa.md` の3ゲート（内容・ファイル・視覚）を通す。**pptx-review スキルが導入済みなら、別コンテキスト（サブエージェント）で監査させる。** 無ければ `references/qa.md` のチェックリストと描画画像で自分で行うが、生成直後の自分の目は甘いので、全ページを新鮮な目で見直す。
+`references/qa.md` の3ゲート（内容・ファイル・視覚）を通す。描画は pptx-review 同梱の `render_preview.py`（Pillow のみ）で行う。**pptx-review スキルが導入済みなら、別コンテキスト（サブエージェント）で監査させる。** 無ければ `references/qa.md` のチェックリストと描画画像で自分で行うが、生成直後の自分の目は甘いので、全ページを新鮮な目で見直す。
 
 修正したら変更したページだけ再描画し、新しい指摘が出なくなるまで回す。3周して収束しなければ、残った問題を利用者に報告して判断を仰ぐ。
 

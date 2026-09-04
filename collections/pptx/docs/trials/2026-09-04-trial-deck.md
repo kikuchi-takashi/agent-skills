@@ -17,3 +17,21 @@ pptx-create の `engine-notes.md` の骨格コードをそのまま使い、8枚
 最終状態: `--strict` で 0 errors / 0 warnings。描画 8 枚を目視し、指摘なし。
 
 再現手順は scratchpad 側の `run_trial.py`（恒久保存はしていない）。同種の較正を行うときは、`engine-notes.md` の python ブロックを抜き出して実行し、lint と描画で確認する。
+
+## 追記: Python だけで完結する環境への見直し（2026-09-04）
+
+外部ネットワーク無し、追加インストール不可、システムツール（LibreOffice、poppler）無し、シェル不定、1回の実行に時間上限、という環境でも全工程が動くように見直した。
+
+| 見直した点 | 変更 |
+|---|---|
+| 描画確認が LibreOffice + pdftoppm 前提だった | pptx-review に `render_preview.py`（Pillow のみ）を追加。図形・文字・画像・表・図表を簡略に描き、はみ出しを赤枠で示す。和文書体が無ければ和文を文字幅どおりの灰色バーで代替 |
+| 手順にシェルコマンド（zip、fc-list、heredoc）があった | すべて Python のコードに置換。ZIP の展開と結合は `zipfile` |
+| Node.js 前提の pptxgenjs 節 | 削除。生成は python-pptx のみ |
+| `.ppt` の変換に LibreOffice を使っていた | pptx-edit では扱えないと明記し、利用者に `.pptx` 保存を依頼 |
+| ライブラリが無い環境の手当てが無かった | 純 Python のパッケージは同梱して `sys.path` に加える手順を engine-notes に追加 |
+| 折り返しの推定が概算だけだった | lint が Pillow と書体ファイルを見つければ実フォントで測る（`measured`）。無ければ概算（`estimated`） |
+| 縦積み・下端配置を手で置いていた | 骨格に `vstack` / `content_band` / `bottom_note` を追加。収まらなければ例外 |
+| 死んだ空白、文字と塗り面の衝突が目視頼み | lint に `DEAD_WHITESPACE`、`TEXT_SHAPE_COLLISION` を追加 |
+| 意図的な指摘の扱いが口頭だった | `design-lock.json` の `allow` に理由つきで登録する方式 |
+
+描画スクリプトの較正: 太字は 24px 以上のときだけ縁取り、図表の項目名は負の値ラベルと重ならない位置、最終段落の段落後間隔は数えない、はみ出し判定は 0.05in 超。

@@ -69,8 +69,8 @@
       "collection": "pptx",
       "path": "pptx/pptx-create",
       "license": "MIT",
-      "compatibility": "Python 3.9+ と python-pptx（pip install python-pptx）。視覚確認に LibreOffice（soffice）と Poppler（pdftoppm）。代替として pptxgenjs（Node.js）も可。",
-      "version": "1.0.0"
+      "compatibility": "Python 3.9+ と python-pptx（lxml、Pillow、XlsxWriter を含む）。視覚確認は pptx-review 同梱の Pillow 描画で行い、外部ツールやネットワークは不要。",
+      "version": "1.1.0"
     },
     {
       "id": "pptx-edit",
@@ -79,8 +79,8 @@
       "collection": "pptx",
       "path": "pptx/pptx-edit",
       "license": "MIT",
-      "compatibility": "Python 3.9+ と python-pptx。構造変更には zip/unzip と XML 編集。視覚確認に LibreOffice（soffice）と Poppler（pdftoppm）。",
-      "version": "1.0.0"
+      "compatibility": "Python 3.9+ と python-pptx（lxml、Pillow を含む）。構造変更は zipfile と XML 編集。視覚確認は pptx-review 同梱の Pillow 描画。外部ツールやネットワークは不要。",
+      "version": "1.1.0"
     },
     {
       "id": "pptx-review",
@@ -89,8 +89,8 @@
       "collection": "pptx",
       "path": "pptx/pptx-review",
       "license": "MIT",
-      "compatibility": "Python 3.9+（lint は標準ライブラリのみ）。視覚確認に LibreOffice（soffice）と Poppler（pdftoppm）。",
-      "version": "1.0.0"
+      "compatibility": "Python 3.9+。lint は標準ライブラリのみ、描画は Pillow のみ。外部ツールやネットワークは不要。和文の書体ファイルがあれば字形まで描く。",
+      "version": "1.1.0"
     },
     {
       "id": "sdd",

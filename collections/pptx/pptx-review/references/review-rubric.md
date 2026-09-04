@@ -14,7 +14,7 @@
 
 | コード | 重大度 | 意味 |
 |---|---|---|
-| BROKEN_RELATIONSHIP / SLIDE_PART_MISSING / CONTENT_TYPE_MISSING | 重大 | パッケージの整合が壊れている（開けないか修復ダイアログ） |
+| BROKEN_RELATIONSHIP / SLIDE_PART_MISSING / CONTENT_TYPE_MISSING / CONTENT_TYPES_MISSING | 重大 | パッケージの整合が壊れている（開けないか修復ダイアログ） |
 | PLACEHOLDER_TEXT | 重大 | 仮置き文言（ダミー、TODO、ここに入力、要確認 など）が残っている |
 | OUT_OF_CANVAS | 重大 | 要素がスライドの外に出ている |
 | TEXT_OVERFLOW_LIKELY | 重大 | 文字が箱に収まらない見込み（推定。画像で確定） |
@@ -22,7 +22,8 @@
 | TEXT_OVERFLOW_POSSIBLE | 重要 | 収まりがぎりぎり。画像で確定 |
 | TEXT_OVERLAP | 重要 | テキスト要素同士の重なり |
 | FULL_PAGE_PICTURE | 重要 | 1枚の画像がページの85%以上を占める（編集不能の疑い） |
-| CHART_NEGATIVE_RENDER | 重要 | 負の値の棒に invertIfNegative が無い。LibreOffice の確認画像が実データと違って見える |
+| TEXT_SHAPE_COLLISION | 重要 | テキストが塗り面・画像・図表と部分的に重なっている（容器に収まっているものは除く） |
+| CHART_NEGATIVE_RENDER | 重要 | 負の値の棒に invertIfNegative が無い。PowerPoint 以外のビューアで負の棒が上向きに見える |
 | ACCENT_LINE_UNDER_TITLE | 重要 | タイトル直下の飾り線 |
 | COLOR_BAND | 重要 | 上端・下端の全幅色帯 |
 | SIDE_STRIPE | 重要 | 側面の縦帯 |
@@ -44,8 +45,9 @@
 | MISALIGNED | 軽微 | 他の要素が共有する揃え線から 0.03〜0.15in ずれた端 |
 | CORNER_MIX | 軽微 | 角丸と直角の塗り面が同じページに混在 |
 | AUTOFIT_SHRINK | 軽微 | 自動縮小で収める設定。縮小後のサイズは FONT_TOO_SMALL で別途判定 |
+| DEAD_WHITESPACE | 軽微 | 本文領域の 55% 超が空いている。下や右に偏った空白なら見直す |
 
-推定に基づくコード（OVERFLOW 系）は、画像で確認してから重大度を確定する。lint は placeholder の継承位置を近似しており、テンプレ由来のスライドでは位置が取れない要素がある。
+推定に基づくコード（OVERFLOW 系）は、画像で確認してから重大度を確定する。要約の `measured` は実フォントで折り返しを測った結果、`estimated` は文字幅の概算である。lint は placeholder の継承位置を近似しており、テンプレ由来のスライドでは位置が取れない要素がある。`design-lock.json` の `allow` で登録された指摘は判定から外れる。
 
 ## 目視の順序と観点
 

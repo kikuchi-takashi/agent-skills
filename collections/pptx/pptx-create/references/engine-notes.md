@@ -1,13 +1,17 @@
-# 生成エンジンの注記 — python-pptx を第一候補に
+# 生成エンジンの注記 — python-pptx で作る
 
-## 1. 選び方
+## 1. 前提と、無いときの手当て
 
-| 条件 | 使うもの |
-|---|---|
-| 新規作成、Python が使える | python-pptx（第一候補） |
-| 新規作成、Node.js しかない | pptxgenjs |
-| テンプレのスライドを複製して流し込む | python-pptx はスライド複製ができない。OOXML 直接編集（pptx-edit の `ooxml-editing.md`） |
-| 既存デッキの文言差替 | python-pptx の run 単位編集 |
+| 必要なもの | 用途 | 無いとき |
+|---|---|---|
+| python-pptx（lxml、Pillow、XlsxWriter に依存） | 生成・編集 | 追加インストールもネットワークも無い環境では、純 Python の python-pptx と XlsxWriter を作業ディレクトリに同梱し、実行の冒頭で `sys.path.insert(0, "vendor")` する。lxml と Pillow はコンパイル済みが必要なので、無ければその環境では生成できない。利用者に伝える |
+| Pillow | 描画確認（pptx-review の `render_preview.py`） | 描画確認ができない。lint（標準ライブラリのみ）だけ通し、未確認と報告する |
+| 和文の書体ファイル（.ttf/.otf） | 描画確認で字形を出す | 無くても描画は動き、和文は文字幅どおりの灰色バーで代替される。レイアウトの確認には足りる。字形まで見るなら書体ファイルを作業ディレクトリに置く |
+
+- シェルが使えない環境がある。手順はすべて Python のコードで書き、ZIP の展開や結合も `zipfile` で行う。
+- 1回の実行に時間の上限がある環境がある。生成と描画を数枚ずつに分け、途中結果をファイルに残す。
+- テンプレのスライド複製は python-pptx にできない。OOXML を直接扱う（pptx-edit の `ooxml-editing.md`）。
+- 既存デッキの文言差替は python-pptx の run 単位編集。
 
 いずれの場合も、生成後に必ず再オープン検査と描画確認を行う。
 
@@ -58,6 +62,30 @@ def spread(n, x, total_w, gap=GAP):
     if w <= 0:
         raise ValueError("%d 個は幅 %.2f に収まらない。分割する" % (n, total_w))
     return [(x + i * (w + gap), w) for i in range(n)]
+
+
+def content_band(top=BODY_Y, bottom=BODY_END):
+    """本文の安全領域 (x, y, 幅, 高さ)。タイトル下からフッター上まで。"""
+    return (M, top, W - 2 * M, bottom - top)
+
+
+def vstack(heights, top=BODY_Y, bottom=BODY_END, gap=GAP):
+    """高さの列を上から積み、各要素の y を返す。収まらなければ例外（黙って重ねない）。"""
+    total = sum(heights) + gap * (len(heights) - 1)
+    if total > bottom - top + 1e-6:
+        raise ValueError("縦に %.2fin 必要だが %.2fin しか無い。文字を減らすか分割する" % (total, bottom - top))
+    ys, y = [], top
+    for h in heights:
+        ys.append(y)
+        y += h + gap
+    return ys
+
+
+def bottom_note(lines, size=None, bottom=BODY_END):
+    """下端に置く注記の (y, 高さ)。下から積むので本文と衝突しない。"""
+    size = size or SIZE["note"]
+    h = text_height(len(lines) if isinstance(lines, list) else 1, size)
+    return bottom - h, h
 
 
 def set_font(run, size, color="text", bold=False):
@@ -143,7 +171,7 @@ def bar_chart(slide, x, y, w, h, categories, series, fmt="0.0"):
         ser.format.fill.solid()
         ser.format.fill.fore_color.rgb = RGBColor.from_string(C["primary" if i == 0 else "line"])
         inv = etree.SubElement(ser._element, qn("c:invertIfNegative")); inv.set("val", "0")
-        ser._element.find(qn("c:cat")).addprevious(inv)           # 無いと LibreOffice が負の棒を上向きに描く
+        ser._element.find(qn("c:cat")).addprevious(inv)           # 無いと PowerPoint 以外のビューアで負の棒が上向きに出ることがある
     return chart
 
 
@@ -199,13 +227,14 @@ if __name__ == "__main__":
 - **`add_textbox` の既定は折り返し無し（`wrap="none"`）と `spAutoFit`。** そのままだと1行で右へ伸び、箱の大きさも文字に合わせて変わる。必ず `word_wrap = True` と `auto_size = MSO_AUTO_SIZE.NONE` にし、箱の高さは `text_height()` で決める。
 - **`normAutofit`（文字の自動縮小）を使わない。** PowerPoint で開いたときだけ縮小され、描画確認とずれる。縮小後のサイズが下限を割る。
 - **N 個を横に並べるときは `spread()` で幅を計算する。** 固定幅を N 回置くと、N が増えたときに右端が溢れる。
+- **縦に積むときは `vstack()`、下端の注記は `bottom_note()`、本文の範囲は `content_band()`。** 手で y を置くと、文言が1行増えた瞬間に重なる。`vstack()` は収まらないと例外を出すので、黙って重ならない。
 - **プレースホルダのレイアウトを使うと、テーマ由来の書式が混ざる。** 新規作成は白紙レイアウト（index 6）に textbox と shape で組む。テンプレを使うときだけレイアウトのプレースホルダを使う。
 - **既定の図形には影と枠線がつく。** `shape.shadow.inherit = False`、`shape.line.fill.background()` を毎回呼ぶ。
 - **textbox には内側の余白がある（既定 0.1in / 0.05in）。** 罫線や図形と端をそろえるなら余白を 0 にする。
 - **自動縮小に頼らない。** `auto_size = MSO_AUTO_SIZE.NONE` にし、文字数の予算で収める。`SHAPE_TO_FIT_TEXT` は PowerPoint で開き直すまで反映されないことがある。
 - **スライドの複製ができない。** 同じ構成のページは関数で再生成する。テンプレのスライド複製が必要なら OOXML を直接扱う。
 - **ネイティブ図表の書式は既定が古い。** `chart.has_title`、`chart.has_legend`（単系列は False）、`plot.has_data_labels`、系列の色、目盛線の色（`value_axis.major_gridlines.format.line.color.rgb`）、`category_axis.tick_labels.font.size` を必ず設定する。縦の目盛線は消す。骨格の `bar_chart()` が最低限を行う。
-- **負の値の棒は、`<c:invertIfNegative val="0"/>` を系列に明示する。** python-pptx はこれを書かず、LibreOffice はその状態で負の棒を絶対値で上向きに描く。確認画像がデータと違う値を示す（実測: −1.9 が +1.9 に見える）。PowerPoint では正しく出るため、画像だけ見て数値を「直す」と本物を壊す。負の値があるときは項目名の位置を `XL_TICK_LABEL_POSITION.LOW` にして棒と重ねない。
+- **負の値の棒は、`<c:invertIfNegative val="0"/>` を系列に明示する。** python-pptx はこれを書かず、PowerPoint 以外のビューア（LibreOffice など）では負の棒が絶対値で上向きに描かれる（実測: −1.9 が +1.9 に見える）。受け手がそのビューアで開くと数値が違って見える。負の値があるときは項目名の位置を `XL_TICK_LABEL_POSITION.LOW` にして棒と重ねない。
 - **図表の文字にも書体を設定する。** `chart.font.name` と `chart.font.size` を設定し、和文ラベルがあるなら `txPr` に `a:ea` を追加する。
 - **表のセルにも内側余白がある。** `cell.margin_left` などで統一する。表の既定スタイルは色が強いので、`tbl.first_row = False` にして自分で塗る。
 - **画像は縦横比を保つ。** 幅か高さの一方だけ指定する。トリミングは `picture.crop_left` などで行う。
@@ -215,36 +244,28 @@ if __name__ == "__main__":
 - **1 ファイル 1 `Presentation()`。** 使い回さない。
 - **ノートは `slide.notes_slide.notes_text_frame`。** 本文の textbox に書かない。
 
-## 4. pptxgenjs を使う場合の注記
+## 4. 描画と再オープン
 
-- `pres.layout = "LAYOUT_WIDE"`（13.333 × 7.5）をスライド追加前に設定する。既定は 10 × 5.625。
-- 色は `"1A1A1A"` の 6 桁。`#` を付けたり 8 桁にしたりするとファイルが壊れる。
-- オプションのオブジェクトは呼び出しごとに新しく作る。同じオブジェクトを2回渡すと内部で単位変換され、2回目がずれる。
-- 影の `offset` は負にしない。
-- 箇条書きは `bullet: true`。本文に「・」を書かない。
-- 単系列の図表は `showLegend: false`。積み上げ棒の `dataLabelPosition` は `ctr` / `inEnd` / `inBase` のみ。
-- `<p:presentation>` の子要素の順序を後処理で変えない。開けなくなる。
-- 生成後に `a:ea` の有無を確認する（`typography-ja.md`）。
-
-## 5. 描画と再オープン
-
-```bash
+```python
 # 再オープン検査（壊れていれば例外）
-python3 -c "from pptx import Presentation; p=Presentation('deck/output.pptx'); print(len(p.slides), 'slides')"
-
-# 描画（LibreOffice → PDF → JPEG）
-soffice --headless --convert-to pdf --outdir deck/qa deck/output.pptx
-rm -f deck/qa/slide-*.jpg
-pdftoppm -jpeg -r 110 deck/qa/output.pdf deck/qa/slide
-ls deck/qa/slide-*.jpg
+from pptx import Presentation
+print(len(Presentation("deck/output.pptx").slides), "slides")
 ```
 
-- macOS で `soffice` が PATH に無ければ `/Applications/LibreOffice.app/Contents/MacOS/soffice`。
-- `pdftoppm` の連番は枚数で桁が変わる（`slide-1.jpg`、`slide-01.jpg`）。古い画像は先に消す。
-- 修正後は PDF から作り直す。`.pptx` を直しただけでは画像は変わらない。
-- 描画が固まるときは `-env:UserInstallation=file:///tmp/lo-profile` を `soffice` に付けて専用プロファイルで起動する。
+```python
+# 描画（pptx-review 同梱。Pillow のみ。<skills> は導入先のスキルディレクトリ）
+import subprocess, sys
+subprocess.run([sys.executable, "<skills>/pptx-review/scripts/render_preview.py", "deck/output.pptx",
+                "--out", "deck/qa/preview", "--sheet"], check=True)
+# 数枚ずつ描くなら --slides 1-4 のように分ける。書体ファイルがあれば --font path.ttf
+```
 
-## 6. ネイティブを守る
+- 出力は `deck/qa/preview-01.png` … と一覧 `deck/qa/preview-sheet.png`。標準出力に、使った書体と、はみ出しで赤枠を付けたページが出る。
+- 和文の書体が無い環境では和文が灰色バーになる。位置・折り返し・重なり・余白はそのまま確認できる。字形（禁則、記号の欠け）は書体ファイルを置いて確認する。
+- この描画は PowerPoint と同じではない。図表は値と色を簡略に描き、影・グラデーション・効果は描かない。「ぎりぎり収まる」は溢れると判断する。
+- 修正後は `.pptx` を作り直してから再描画する。
+
+## 5. ネイティブを守る
 
 - 図表は `add_chart`、表は `add_table`、図形は `add_shape`。画像化しない。
 - 画像にしてよいのは、写真、PowerPoint に無い図（サンキー、ネットワーク図）、ロゴだけ。

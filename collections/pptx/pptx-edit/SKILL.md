@@ -2,9 +2,9 @@
 name: pptx-edit
 description: "既存のPowerPoint（.pptx/.potx）を、元のデザインシステム（テーマ色・書体・レイアウト）を壊さずに編集する。文言の差替、スライドの追加・削除・並べ替え、テンプレへの流し込み、図表データの更新、生成AIっぽい装飾の除去、体裁の修正に使う。「このPPTを直して」「スライド3を修正」「テンプレに流し込んで」「AIっぽさを消して」など、既存ファイルがあるときに使う。新規作成は pptx-create、監査だけなら pptx-review。"
 license: MIT
-compatibility: "Python 3.9+ と python-pptx。構造変更には zip/unzip と XML 編集。視覚確認に LibreOffice（soffice）と Poppler（pdftoppm）。"
+compatibility: "Python 3.9+ と python-pptx（lxml、Pillow を含む）。構造変更は zipfile と XML 編集。視覚確認は pptx-review 同梱の Pillow 描画。外部ツールやネットワークは不要。"
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   publisher: "agent-skills"
 ---
 
@@ -22,7 +22,7 @@ metadata:
 
 ### 1. 把握（`deck/before/`）
 
-- 全ページを描画し（`soffice --headless --convert-to pdf` → `pdftoppm`）、一覧を見る。
+- 全ページを描画し（pptx-review の `render_preview.py --sheet`）、一覧を見る。
 - テキストを書き出す（pptx-create の `qa.md` と同じ python-pptx の短いスクリプト）。
 - デザインシステムを抽出して `deck/design-lock.md` に書く: `ppt/theme/theme1.xml` の配色と書体、使われているレイアウト名、本文とタイトルの実サイズ（スライド上の実値。テーマと違うことがある）。
 - pptx-review スキルが導入されていれば lint を通し、元の状態の指摘を `deck/before/lint.json` に残す。元から壊れていた箇所と、自分が壊した箇所を区別するため。
@@ -48,7 +48,7 @@ metadata:
 | スライドの複製・削除・並べ替え、テンプレ流し込み | python-pptx では複製ができない。`references/ooxml-editing.md` の手順で XML を直接扱う |
 | 装飾の除去（飾り線・色帯・絵文字） | `references/cleanup-checklist.md` |
 
-`.ppt`（旧形式）は先に `soffice --headless --convert-to pptx` で変換する。`.potx` は `.pptx` と同じ手順で扱い、拡張子を保つ。
+`.ppt`（旧形式）はこのスキルでは扱えない。利用者に PowerPoint で `.pptx` に保存し直してもらう。`.potx` は `.pptx` と同じ手順で扱い、拡張子を保つ。
 
 ### 4. 編集
 
@@ -60,7 +60,7 @@ metadata:
 
 ### 5. 品質確認（`deck/qa/`）
 
-- 再オープン検査: `python3 -c "from pptx import Presentation; Presentation('deck/output.pptx')"`
+- 再オープン検査: Python で `Presentation("deck/output.pptx")` を開く。例外が出れば壊れている。
 - pptx-review があれば `--baseline deck/before/lint.json` を付けて lint を通し、**新しく増えた指摘**を 0 にする。元からある指摘は `inherited` として集計され、報告に書く。
 - 触ったページを描画して1枚ずつ見る。加えて全体を一覧し、他のページとの整合（タイトル位置、余白、フッター）を確認する。
 - テキストを再度書き出し、変更前との差分が `deck/changes.md` の範囲に収まっていることを確認する。

@@ -4,7 +4,7 @@ PowerPoint（.pptx）を、生成AIらしさを出さず、デザインを安定
 
 - `pptx-create`: 要件や原稿から新しいデッキを設計・生成する。構成 → デザインロック → 生成 → 品質確認
 - `pptx-edit`: 既存デッキを、元のデザインシステムを壊さずに編集する。テンプレ流し込み、AIっぽい装飾の除去を含む
-- `pptx-review`: デッキを変更せずに監査し、機械検査（`pptx_lint.py`）と描画画像で判定する。生成者とは別のコンテキストで使う
+- `pptx-review`: デッキを変更せずに監査し、機械検査（`pptx_lint.py`）と簡易描画（`render_preview.py`）で判定する。生成者とは別のコンテキストで使う
 
 ## 設計方針
 
@@ -20,13 +20,16 @@ PowerPoint（.pptx）を、生成AIらしさを出さず、デザインを安定
 skills install collection:pptx --root collections --target ~/.agents/skills
 ```
 
-3つのスキルがフラットにコピーされます。`pptx-create` と `pptx-edit` は単体でも動きますが、`pptx-review` が同時に導入されていると、品質確認で `pptx-review/scripts/pptx_lint.py` を使えます。
+3つのスキルがフラットにコピーされます。`pptx-create` と `pptx-edit` は単体でも動きますが、`pptx-review` が同時に導入されていると、品質確認で `pptx_lint.py` と `render_preview.py` を使えます。
 
-## 前提ツール
+## 前提
 
-- Python 3.9 以上、`python-pptx`（生成・編集）
-- LibreOffice（`soffice`）と Poppler（`pdftoppm`）（描画確認）
+- Python 3.9 以上
+- `python-pptx`（生成・編集。lxml、Pillow、XlsxWriter に依存）
+- Pillow（描画確認）
 - `pptx_lint.py` は標準ライブラリのみで動く
+- 外部ツール（LibreOffice など）、ネットワーク、追加インストールは不要。シェルが無い環境でも Python だけで手順が完結する
+- 和文の書体ファイルがあれば描画確認で字形まで出る。無ければ和文は文字幅どおりの灰色バーで代替される
 
 ## 参考にしたもの
 

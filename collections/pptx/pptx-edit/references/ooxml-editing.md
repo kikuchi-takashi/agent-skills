@@ -4,16 +4,31 @@
 
 ## 1. 展開と再圧縮
 
-```bash
-python3 -c "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall('unpacked')" deck.pptx
+```python
+import os, zipfile
+
+zipfile.ZipFile("deck.pptx").extractall("unpacked")
 # ... 編集 ...
-(cd unpacked && rm -f ../out.pptx && zip -Xr ../out.pptx .)
-python3 -c "from pptx import Presentation; Presentation('out.pptx')" && echo reopen-ok
+
+def pack(src_dir, out_path):
+    if os.path.exists(out_path):
+        os.remove(out_path)                       # 消さないと削除した部品が古い ZIP に残る
+    with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(os.path.join(src_dir, "[Content_Types].xml"), "[Content_Types].xml")   # 先頭に置く
+        for root, _, files in os.walk(src_dir):
+            for name in files:
+                full = os.path.join(root, name)
+                rel = os.path.relpath(full, src_dir).replace(os.sep, "/")
+                if rel != "[Content_Types].xml":
+                    z.write(full, rel)            # パスは展開先からの相対。先頭に unpacked/ を付けない
+
+pack("unpacked", "out.pptx")
+from pptx import Presentation
+Presentation("out.pptx")                          # 再オープン検査
 ```
 
-- `zip` は展開先ディレクトリの**中から**実行する。外から実行するとパスに `unpacked/` が付き、開けない。
+- ZIP 内のパスは `ppt/slides/slide1.xml` のように展開先からの相対にする。ディレクトリ名が先頭に付くと開けない。
 - 出力先を先に消す。消さないと削除した部品が古い ZIP に残る。
-- `-X` で余計な属性を付けない。
 
 ## 2. 部品の対応
 
@@ -67,8 +82,7 @@ python3 -c "from pptx import Presentation; Presentation('out.pptx')" && echo reo
 5. 差し替えた文字がテンプレの装飾（下線の長さ、枠の幅）と合わなくなっていないか描画で確認する。
 6. 仮置き文言を検索して残っていないことを確認する。
 
-```bash
-python3 - <<'EOF'
+```python
 import re
 from pptx import Presentation
 p = Presentation("out.pptx")
@@ -77,8 +91,9 @@ for i, s in enumerate(p.slides, 1):
     for sh in s.shapes:
         if sh.has_text_frame and pat.search(sh.text_frame.text):
             print(i, sh.name, sh.text_frame.text[:60])
-EOF
 ```
+
+pptx-review の lint も `PLACEHOLDER_TEXT` として同じ検査を行う。
 
 ## 7. python-pptx での run 単位編集
 

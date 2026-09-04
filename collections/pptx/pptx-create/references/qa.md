@@ -8,8 +8,7 @@ pptx-review スキルが導入されていれば、別コンテキスト（サ�
 
 テキストを全部書き出し、`outline.md` と突き合わせる。
 
-```bash
-python3 - <<'EOF'
+```python
 from pptx import Presentation
 p = Presentation("deck/output.pptx")
 for i, s in enumerate(p.slides, 1):
@@ -19,7 +18,6 @@ for i, s in enumerate(p.slides, 1):
             print(sh.text_frame.text)
     if s.has_notes_slide:
         print("[notes]", s.notes_slide.notes_text_frame.text[:200])
-EOF
 ```
 
 確認項目:
@@ -34,26 +32,46 @@ EOF
 
 ## ゲート2: ファイル
 
-```bash
+```python
 # 再オープン
-python3 -c "from pptx import Presentation; Presentation('deck/output.pptx')" && echo reopen-ok
+from pptx import Presentation
+Presentation("deck/output.pptx")
 
-# lint（pptx-review が導入されている場合。導入先のパスに読み替える）
-python3 <skills>/pptx-review/scripts/pptx_lint.py deck/output.pptx \
-  --mode doc --lock deck/design-lock.json --json-out deck/qa/lint.json
+# lint（pptx-review が導入されている場合。<skills> は導入先のパス。標準ライブラリのみで動く）
+import subprocess, sys
+subprocess.run([sys.executable, "<skills>/pptx-review/scripts/pptx_lint.py", "deck/output.pptx",
+                "--mode", "doc", "--lock", "deck/design-lock.json", "--json-out", "deck/qa/lint.json"])
 ```
 
 - `errors` は必ず 0 にする。`warnings` は1件ずつ理由を確認し、意図的なものは納品報告に書く。
 - lint はパッケージの整合（参照先の無い rels、Content_Types の欠落、仮置き文言）も検査する。XML を直接触った後は必ず通す。
+- 意図的に残す指摘（内容の数が3で3列にした、など）は `design-lock.json` の `allow` に理由つきで登録する。口頭で「意図的」と言うだけでは判定から外れない。
 - lint が無い環境では、少なくとも再オープン検査と、後述の数値ガードレールを目視で確認する。
 
 ## ゲート3: 視覚
 
-`engine-notes.md` の手順で全ページを描画し、**1枚ずつ画像を開いて見る。** 縮小一覧だけで済ませない。デッキ全体の整合（ページをまたいだ位置・余白・リズム）は、`pdftoppm -r 30` で作った小さい画像を並べて見る。
+`engine-notes.md` の手順で全ページを `render_preview.py` で描画し、**1枚ずつ画像を開いて見る。** 縮小一覧だけで済ませない。デッキ全体の整合（ページをまたいだ位置・余白・リズム）は `--sheet` の一覧画像で見る。
+
+描画は Pillow による簡易描画で、PowerPoint と同じではない。和文の書体が無い環境では和文が灰色バーになるが、位置・折り返し・重なり・余白の確認には足りる。赤枠が付いたページは、はみ出しが実測で出ている。
+
+pptx-review が導入されていない場合の代替は、幾何の表である。各図形の位置・大きさ・文字数・サイズを書き出し、キャンバス外、重なり、箱に対する文字量を数値で確かめる。画像より見落としやすいので、pptx-review の導入を利用者に勧める。
+
+```python
+from pptx import Presentation
+from pptx.util import Emu
+p = Presentation("deck/output.pptx")
+W, H = Emu(p.slide_width).inches, Emu(p.slide_height).inches
+for i, s in enumerate(p.slides, 1):
+    for sh in s.shapes:
+        x, y, w, h = (Emu(v).inches for v in (sh.left, sh.top, sh.width, sh.height))
+        text = sh.text_frame.text.strip()[:20] if sh.has_text_frame else ""
+        flag = "OUT" if x < 0 or y < 0 or x + w > W or y + h > H else ""
+        print("slide %d %-22s x=%.2f y=%.2f w=%.2f h=%.2f %s %s" % (i, sh.name, x, y, w, h, flag, text))
+```
 
 見る順番（頻度の高い順）:
 
-1. **文字のはみ出し・切れ。** 箱の外に出た文字、最終行が消えた箇所。代替書体で描画している場合、ぎりぎりは溢れると判断する
+1. **文字のはみ出し・切れ。** 赤枠のページと、箱の端に触れている文字。簡易描画なので、ぎりぎりは溢れると判断する
 2. 要素の重なり（文字に線が乗る、図形が文字を隠す）
 3. 出典・フッターが本文と衝突していないか
 4. 要素間の間隔が 0.3in 未満、余白が 0.6in 未満

@@ -12,6 +12,9 @@
   - パッケージの整合（参照先の無い rels、Content_Types の欠落）
   - 仮置き文言、空のプレースホルダ、全面画像、整列のずれ、角処理の混在
   - --baseline で以前のレポートを渡すと、元からあった指摘を除いて判定する
+  - 死んだ空白（本文領域の被覆率）、文字と塗り面・画像の部分的な衝突
+  - design-lock.json の allow に登録した指摘は「意図的」として判定から除く
+  - Pillow と書体ファイルがあれば実フォントで折り返しを測る（無ければ概算）
 
 使い方:
   python3 pptx_lint.py deck.pptx [--mode talk|doc] [--lock design-lock.json]
@@ -24,6 +27,7 @@
 import argparse
 import json
 import math
+import os
 import re
 import sys
 import unicodedata
@@ -64,6 +68,81 @@ EMOJI_RE = re.compile(
 )
 CJK_RE = re.compile("[　-ヿ㐀-䶿一-鿿豈-﫿＀-￯]")
 THEME_FONT_RE = re.compile(r"^\+m[jn]-")
+
+try:  # 任意依存: あれば実フォントで測る
+    from PIL import ImageFont as _ImageFont
+except Exception:  # pragma: no cover
+    _ImageFont = None
+
+_FONT_DIRS = (
+    "/usr/share/fonts", "/usr/local/share/fonts", "/System/Library/Fonts", "/Library/Fonts",
+    "~/Library/Fonts", "~/.fonts", "~/.local/share/fonts", "C:/Windows/Fonts", "/mnt/data", ".",
+)
+_CJK_HINTS = {  # 名前の断片 → 優先度（和文専用を高く、和文を含む汎用 CJK を低く）
+    "notosansjp": 3, "notoserifjp": 3, "ヒラギノ角ゴ": 3, "ヒラギノ": 3, "yugoth": 3, "meiryo": 3, "msgothic": 3,
+    "ipag": 3, "ipaexg": 3, "ipam": 3, "biz-udp": 3, "bizudp": 3, "takao": 3, "vlgothic": 3,
+    "notosanscjkjp": 3, "sourcehansansjp": 3, "notosanscjk": 2, "notoserifcjk": 2,
+}
+_LATIN_HINTS = ("dejavusans.ttf", "arial.ttf", "liberationsans-regular", "helvetica")
+
+
+def find_fonts():
+    """(和文対応の書体パス or None, 欧文の書体パス or None) を返す。"""
+    import os
+    cjk = latin = None
+    best = 0
+    for base in _FONT_DIRS:
+        base = os.path.expanduser(base)
+        if not os.path.isdir(base):
+            continue
+        for root, _, files in os.walk(base):
+            for name in files:
+                low = name.lower()
+                if not low.endswith((".ttf", ".otf", ".ttc")):
+                    continue
+                path = os.path.join(root, name)
+                score = max([v for k, v in _CJK_HINTS.items() if k in low] or [0])
+                if score > best:
+                    cjk, best = path, score
+                if latin is None and any(h in low for h in _LATIN_HINTS):
+                    latin = path
+    if latin is None:
+        try:
+            import matplotlib
+            cand = os.path.join(os.path.dirname(matplotlib.__file__), "mpl-data", "fonts", "ttf", "DejaVuSans.ttf")
+            if os.path.exists(cand):
+                latin = cand
+        except Exception:
+            pass
+    return cjk, latin
+
+
+class TextMeasurer(object):
+    """実フォントがあれば glyph 幅、無ければ概算で文字幅（pt）を返す。"""
+
+    def __init__(self, font_path=None):
+        self.font_path = font_path
+        self._cache = {}
+        self.enabled = bool(font_path and _ImageFont)
+
+    def _font(self, size):
+        key = int(round(size * 4))
+        if key not in self._cache:
+            try:
+                self._cache[key] = _ImageFont.truetype(self.font_path, max(int(round(size * 4)), 4))
+            except Exception:
+                self._cache[key] = None
+                self.enabled = False
+        return self._cache[key]
+
+    def width(self, text, size):
+        font = self._font(size) if self.enabled else None
+        if font is None:
+            return text_width_pt(text, size)
+        try:
+            return font.getlength(text) / 4.0
+        except Exception:
+            return text_width_pt(text, size)
 FOOTER_PREFIXES = ("出典", "Source", "※", "注", "問い合わせ", "連絡先", "Contact", "©", "Confidential", "機密", "社外秘")
 PLACEHOLDER_RE = re.compile(
     r"lorem|ipsum|\btodo\b|\bxxx+\b|\btbd\b|ダミー|サンプルテキスト|テキストを入力|ここに.{0,8}(入力|記入|挿入)|"
@@ -302,20 +381,26 @@ def paragraphs(tx_body):
         text_parts = []
         sizes = []
         fonts = set()
+        runs = []
         ea_missing = False
         for run in para:
             if run.tag not in (q("a", "r"), q("a", "fld"), q("a", "br")):
                 continue
             if run.tag == q("a", "br"):
                 text_parts.append("\n")
+                runs.append({"text": "\n", "size": None, "bold": False, "color": None})
                 continue
             t = run.find(q("a", "t"))
             text = t.text if t is not None and t.text else ""
             text_parts.append(text)
             rpr = run.find(q("a", "rPr"))
+            run_info = {"text": text, "size": None, "bold": False, "color": None}
             if rpr is not None:
                 if rpr.get("sz"):
                     sizes.append(int(rpr.get("sz")) / 100.0)
+                    run_info["size"] = int(rpr.get("sz")) / 100.0
+                run_info["bold"] = rpr.get("b") == "1"
+                run_info["color"] = color_of(rpr)
                 latin = rpr.find(q("a", "latin"))
                 ea = rpr.find(q("a", "ea"))
                 if latin is not None and latin.get("typeface"):
@@ -324,13 +409,24 @@ def paragraphs(tx_body):
                     fonts.add(ea.get("typeface"))
                 if latin is not None and ea is None and CJK_RE.search(text):
                     ea_missing = True
+            runs.append(run_info)
         end = para.find(q("a", "endParaRPr"))
         if not sizes and end is not None and end.get("sz"):
             sizes.append(int(end.get("sz")) / 100.0)
         ppr = para.find(q("a", "pPr"))
         line_spacing = 1.2
         before = after = 0.0
+        algn, bullet, mar_l, indent, level = "l", None, 0.0, 0.0, 0
         if ppr is not None:
+            algn = ppr.get("algn", "l")
+            level = int(ppr.get("lvl", "0") or 0)
+            mar_l = int(ppr.get("marL", "0") or 0) / EMU
+            indent = int(ppr.get("indent", "0") or 0) / EMU
+            bu = ppr.find(q("a", "buChar"))
+            if bu is not None:
+                bullet = bu.get("char", "•")
+            elif ppr.find(q("a", "buAutoNum")) is not None:
+                bullet = "#"
             ln = ppr.find(q("a", "lnSpc") + "/" + q("a", "spcPct"))
             if ln is not None and ln.get("val"):
                 line_spacing = int(ln.get("val")) / 100000.0
@@ -345,12 +441,37 @@ def paragraphs(tx_body):
             "text": "".join(text_parts),
             "sizes": sizes,
             "fonts": fonts,
+            "runs": runs,
             "ea_missing": ea_missing,
             "line_spacing": line_spacing,
             "before": before,
             "after": after,
+            "algn": algn,
+            "bullet": bullet,
+            "mar_l": mar_l,
+            "indent": indent,
+            "level": level,
         })
     return result
+
+
+def color_of(container):
+    """solidFill の色を ('srgb', 'RRGGBB') か ('scheme', 'accent1') で返す。無ければ None。"""
+    fill = container.find(q("a", "solidFill"))
+    if fill is None:
+        return None
+    srgb = fill.find(q("a", "srgbClr"))
+    if srgb is not None:
+        return ("srgb", srgb.get("val", "000000").upper())
+    scheme = fill.find(q("a", "schemeClr"))
+    if scheme is not None:
+        mods = {}
+        for child in scheme:
+            tag = child.tag.split("}")[-1]
+            if tag in ("lumMod", "lumOff", "tint", "shade", "alpha"):
+                mods[tag] = int(child.get("val", "100000")) / 100000.0
+        return ("scheme", scheme.get("val", "tx1"), mods)
+    return None
 
 
 def collect_shapes(pkg, part, layout_pos, master_pos):
@@ -403,6 +524,7 @@ def collect_shapes(pkg, part, layout_pos, master_pos):
             paras = paragraphs(tx_body)
             text = "\n".join(p["text"] for p in paras).strip()
             shapes.append({
+                "el": el,
                 "kind": kind,
                 "name": name_el.get("name") if name_el is not None else "",
                 "id": name_el.get("id") if name_el is not None else "",
@@ -451,6 +573,9 @@ def is_title(shape):
     return False
 
 
+MEASURER = TextMeasurer(None)
+
+
 def estimate_overflow(shape):
     """(ratio, confidence) を返す。ratio は必要高さ / 箱の高さ。"""
     box = shape["box"]
@@ -479,12 +604,12 @@ def estimate_overflow(shape):
         else:
             lines = 0
             for segment in text.split("\n"):
-                width = text_width_pt(segment, size)
+                width = MEASURER.width(segment, size)
                 lines += max(1, int(math.ceil(width / inner_w))) if segment else 1
         needed += lines * size * max(para["line_spacing"], 1.0) + para["before"] + (para["after"] if idx < last else 0.0)
     if needed <= 0:
         return None
-    confidence = "estimate" if known else "size-inherited"
+    confidence = ("measured" if MEASURER.enabled else "estimate") if known else "size-inherited"
     if autofit is not None:
         confidence = "autofit"
     return needed / inner_h, confidence
@@ -533,7 +658,7 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
                     "PowerPoint の自動縮小で収める設定（比 %.2f）。縮小後のサイズが下限を割らないか確認" % ratio, s)
             continue
         if ratio >= 1.15:
-            add("TEXT_OVERFLOW_LIKELY", "error" if confidence == "estimate" else "warning",
+            add("TEXT_OVERFLOW_LIKELY", "error" if confidence in ("estimate", "measured") else "warning",
                 "文字が箱に収まらない見込み（必要高さ/箱高さ=%.2f、%s）。描画画像で確認" % (ratio, confidence), s)
         elif ratio >= 1.02:
             add("TEXT_OVERFLOW_POSSIBLE", "warning",
@@ -641,6 +766,39 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
                     add("MISALIGNED", "info", "%sが他の %d 要素の揃え線 %.2fin から %.2fin ずれている" % (label, shared, g, abs(v - g)), s)
                     break
 
+    # 死んだ空白（本文領域の被覆率。表紙・章扉のような要素の少ないページは除く）
+    body_shapes = [s for s in boxed if s["box"][1] + s["box"][3] > 1.6 and s["box"][1] < ch - 0.8]
+    if len(body_shapes) >= 3 and title_shape is not None:
+        top, bottom, left, right = 2.0, ch - 0.9, args.margin, cw - args.margin
+        grid = 20
+        cell_w, cell_h = (right - left) / grid, (bottom - top) / grid
+        covered = 0
+        for gy in range(grid):
+            for gx in range(grid):
+                cx0, cy0 = left + gx * cell_w, top + gy * cell_h
+                cx1, cy1 = cx0 + cell_w, cy0 + cell_h
+                for s2 in body_shapes:
+                    x, y, w, h = s2["box"]
+                    if x < cx1 and x + w > cx0 and y < cy1 and y + h > cy0:
+                        covered += 1
+                        break
+        empty = 1.0 - covered / float(grid * grid)
+        if empty > 0.55:
+            add("DEAD_WHITESPACE", "info", "本文領域の %d%% が空いている。下や右に偏った空白なら、要素を大きくするか分割を見直す" % int(empty * 100))
+
+    # 文字と塗り面・画像・図表の部分的な衝突（容器に収まっているものは除く）
+    fills = [s for s in boxed if s["box"] is not None and ((s["kind"] == "shape" and s["filled"] and not s["text"]) or s["kind"] in ("picture", "chart", "table"))]
+    for t in text_shapes:
+        tx, ty, tw, th = t["box"]
+        t_area = tw * th
+        for f in fills:
+            inter = overlap_area(t["box"], f["box"])
+            if t_area <= 0 or inter <= 0:
+                continue
+            if inter / t_area > 0.05 and inter / t_area < 0.9:
+                add("TEXT_SHAPE_COLLISION", "warning", "テキスト「%s」が %s（%s）と部分的に重なっている" % (t["text"][:20], f["name"] or f["id"], f["kind"]), t)
+                break
+
     # 角処理の混在
     big_fills = [s for s in boxed if s["kind"] == "shape" and s["filled"] and s["box"][2] >= 1.0 and s["box"][3] >= 0.8]
     geoms = set(s["geom"] for s in big_fills if s["geom"] in ("rect", "roundRect"))
@@ -713,7 +871,7 @@ def chart_findings(pkg, part):
                         pass
                 if any(v < 0 for v in values) and ser.find("{%s}invertIfNegative" % ns_c) is None:
                     findings.append({"code": "CHART_NEGATIVE_RENDER", "severity": "warning",
-                                     "message": "%s の棒グラフに負の値があるが invertIfNegative が無い。LibreOffice の確認画像では負の棒が上向きに出る（PowerPoint では正しい）。系列に val=0 を明示する" % target.rsplit("/", 1)[-1]})
+                                     "message": "%s の棒グラフに負の値があるが invertIfNegative が無い。PowerPoint 以外のビューアで負の棒が上向きに見える。系列に val=0 を明示する" % target.rsplit("/", 1)[-1]})
                     break
     return findings
 
@@ -767,7 +925,28 @@ def load_lock(path):
         lock["colors"] = set(c.upper().lstrip("#") for c in data["colors"])
     if isinstance(data.get("min_font_pt"), (int, float)):
         lock["min_font_pt"] = float(data["min_font_pt"])
+    if isinstance(data.get("allow"), list):
+        lock["allow"] = [a for a in data["allow"] if isinstance(a, dict) and a.get("code")]
     return lock
+
+
+def apply_allow(report_slides, deck_findings, allow):
+    """登録済みの指摘に allowed=true と理由を付ける。slide 省略は全ページ。"""
+    count = 0
+    for entry in allow:
+        code, slide, reason = entry.get("code"), entry.get("slide"), entry.get("reason", "")
+        targets = report_slides if slide is None else [s for s in report_slides if s["index"] == slide]
+        for s in targets:
+            for f in s["findings"]:
+                if f["code"] == code and not f.get("allowed"):
+                    f["allowed"], f["reason"] = True, reason
+                    count += 1
+        if slide is None:
+            for f in deck_findings:
+                if f["code"] == code and not f.get("allowed"):
+                    f["allowed"], f["reason"] = True, reason
+                    count += 1
+    return count
 
 
 def main(argv=None):
@@ -782,6 +961,7 @@ def main(argv=None):
     parser.add_argument("--margin", type=float, default=0.4, help="テキストが侵食してはいけない余白 in")
     parser.add_argument("--json-out", help="JSON レポートの書き出し先")
     parser.add_argument("--baseline", help="編集前のレポート JSON。そこにある指摘は inherited として判定から除く")
+    parser.add_argument("--font", help="折り返し計測に使う書体ファイル（.ttf/.otf）。省略時は和文対応の書体を探す")
     parser.add_argument("--strict", action="store_true", help="warning も失敗扱い")
     args = parser.parse_args(argv)
 
@@ -801,6 +981,10 @@ def main(argv=None):
 
     lock = load_lock(args.lock)
     baseline = load_baseline(args.baseline)
+    font_path = args.font
+    if font_path is None and _ImageFont is not None:
+        font_path = find_fonts()[0]
+    MEASURER.__init__(font_path if (_ImageFont and font_path) else None)
     canvas = canvas_size(pkg)
     slides = slide_order(pkg)
     deck_state = {"fonts": set(), "signatures": [], "colors": Counter()}
@@ -855,9 +1039,14 @@ def main(argv=None):
                 f["baseline"] = True
                 inherited += 1
 
+    allowed = apply_allow(report_slides, deck_findings, lock.get("allow", []))
+
+    def skip(f):
+        return f.get("baseline") or f.get("allowed")
+
     def count(severity):
-        n = sum(1 for s in report_slides for f in s["findings"] if f["severity"] == severity and not f.get("baseline"))
-        return n + sum(1 for f in deck_findings if f["severity"] == severity and not f.get("baseline"))
+        n = sum(1 for s in report_slides for f in s["findings"] if f["severity"] == severity and not skip(f))
+        return n + sum(1 for f in deck_findings if f["severity"] == severity and not skip(f))
 
     errors, warnings = count("error"), count("warning")
     passed = errors == 0 and (not args.strict or warnings == 0)
@@ -874,7 +1063,9 @@ def main(argv=None):
         "deck_findings": deck_findings,
         "slides": report_slides,
         "summary": {"errors": errors, "warnings": warnings, "strict": args.strict,
-                    "inherited_from_baseline": inherited},
+                    "inherited_from_baseline": inherited, "allowed_by_lock": allowed},
+        "measurement": {"font": MEASURER.font_path if MEASURER.enabled else None,
+                        "mode": "measured" if MEASURER.enabled else "estimate"},
         "passed": passed,
     }
     output = json.dumps(report, ensure_ascii=False, indent=2)
@@ -883,15 +1074,17 @@ def main(argv=None):
             fh.write(output + "\n")
     print(output)
 
-    print("--- pptx_lint: %d slides, %d errors, %d warnings, passed=%s%s" % (
+    print("--- pptx_lint: %d slides, %d errors, %d warnings, passed=%s%s%s (text: %s)" % (
         len(slides), errors, warnings, passed,
-        (", %d inherited from baseline" % inherited) if baseline else ""), file=sys.stderr)
+        (", %d inherited from baseline" % inherited) if baseline else "",
+        (", %d allowed by lock" % allowed) if allowed else "",
+        "measured with " + os.path.basename(MEASURER.font_path) if MEASURER.enabled else "estimated"), file=sys.stderr)
     for s in report_slides:
         for f in s["findings"]:
-            if f["severity"] in ("error", "warning") and not f.get("baseline"):
+            if f["severity"] in ("error", "warning") and not skip(f):
                 print("  slide %d [%s] %s: %s" % (s["index"], f["severity"], f["code"], f["message"]), file=sys.stderr)
     for f in deck_findings:
-        if not f.get("baseline"):
+        if not skip(f):
             print("  deck [%s] %s: %s" % (f["severity"], f["code"], f["message"]), file=sys.stderr)
     return 0 if passed else 1
 
