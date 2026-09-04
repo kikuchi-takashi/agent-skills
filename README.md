@@ -51,6 +51,30 @@ skills install collection:sdd --root collections --target ~/.agents/skills
 
 `install` は既存スキルディレクトリを上書きしません。コレクション一括導入でも全出力先を先に検査し、衝突が1件でもあれば何もコピーせず停止します。内容を確認して置き換える場合だけ `--force` を指定してください。
 
+## Codex / Claude Code へのインストール（npx）
+
+Node.js/npm が使える環境では、[Vercelの `skills` CLI](https://github.com/vercel-labs/skills)（`npx skills`）からGitHub上のスキルを直接インストールできます。現行の `skills` CLI は Node.js 22.20.0 以上が必要です。SDDコレクションの15スキルをユーザー領域へ入れる場合は、対象エージェントごとに次を実行します。
+
+```bash
+# Codex
+npx skills add kikuchi-takashi/agent-skills/collections/sdd \
+  --skill '*' --agent codex --global --yes
+
+# Claude Code
+npx skills add kikuchi-takashi/agent-skills/collections/sdd \
+  --skill '*' --agent claude-code --global --yes
+```
+
+特定のスキルだけを入れる場合は `--skill '*'` を名前に置き換えます。
+
+```bash
+# 例: SDDのレビューだけをCodexへ
+npx skills add kikuchi-takashi/agent-skills/collections/sdd \
+  --skill sdd-review --agent codex --global --yes
+```
+
+プロジェクト内だけで使う場合は `--global` を外します。`--yes` を外すと、導入するスキルと対象エージェントを確認してから実行できます。CLIの既定ではエージェント側から共有コピーへのリンクを作成します。リンクではなく独立コピーにしたい場合は `--copy` を追加してください。配置先は、プロジェクトスコープではCodexが `.agents/skills/`、Claude Codeが `.claude/skills/`、グローバルスコープ（`--global`）ではCodexが `~/.codex/skills/`、Claude Codeが `~/.claude/skills/` です。
+
 ## スキルの追加
 
 ```text
