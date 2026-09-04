@@ -14,6 +14,16 @@
 - **スキルセット自体の変更**: 「スキルを改善して」「新スキルを追加して」→ `maintain` が契約（state.md 書式・フェーズ列挙・description 規約）を守らせる
 - **不具合報告からの改善**: 「〇〇スキルがうまく動かなかった」→ `troubleshoot` が証拠を確認し原因を切り分け、承認を得た上で専用ブランチに修正を積んで PR を作成する
 
+## マーケットプレイスからの導入
+
+マーケットプレイスリポジトリで、導入先プロジェクトのルートを `--target` に指定する。
+
+```bash
+skills install bundle:sdd --root collections --target /path/to/project
+```
+
+既存ファイルとの衝突が1件でもあれば、何もコピーせず停止する。既存の `CLAUDE.md` を残す場合は、配布元と比較して必要な指示を手動で統合する。内容を確認した上で既存の同名ファイルを置き換える場合だけ `--force` を追加する。`--force` でも既存ディレクトリ全体や無関係なファイルは削除しない。
+
 ## フェーズ
 
 ```
@@ -47,7 +57,9 @@ constitution → specify → clarify → plan → tasks → analyze → implemen
                   ＋receive-review（受領レビュー対応）＋maintain（メンテ用）
                   ＋troubleshoot（不具合報告からの改善＋PR作成）
 .claude/agents/   sdd-improver（評価・改善ループ専門エージェント。maintain / troubleshoot から派遣）
+bundle.json       マーケットプレイス用の一体配布 manifest（自己検証用に配布物にも同梱）
+LICENSE           配布物に同梱するライセンス
 specs/            機能ごとの成果物（YYYY-MM-DD-機能名）
-docs/             constitution.md（初回に生成）・maintain-log.md（採用/却下の記録）
-                  ・trials/（実戦トライアルの摩擦ログ）・genesis/（設計記録）
+docs/             constitution.md（初回に生成）・maintain-log.md（採用/却下時に生成）
+                  正本にある trials/・genesis/ は保守記録のため配布対象外
 ```

@@ -1,0 +1,5 @@
+# SDD bundle instructions
+
+This directory is a self-contained Claude-oriented SDD bundle, not a normal marketplace collection of independently installable skills. `bundle.json` is the distribution manifest; it installs the declared runtime paths together into a project root. Preserve the `.claude/skills/`, `.claude/agents/`, `CLAUDE.md`, templates, and `scripts/validate` relationship. Do not list internal skills as individually installable or move them to `collections/sdd/<skill-name>/` without a separate approved migration.
+
+For SDD-only maintenance, read `CLAUDE.md` and `.claude/skills/maintain/SKILL.md`, follow their contract table and change-specific checks, then run `scripts/validate`. If runtime files change, confirm `bundle.json` still includes every required top-level path. Also run the root repository verification because bundle validation, index metadata, or installation may be affected. Regenerate `marketplace.json`; never add an internal SDD skill as an individually installable entry.

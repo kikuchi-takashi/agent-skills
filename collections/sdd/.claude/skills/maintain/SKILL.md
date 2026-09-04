@@ -26,6 +26,7 @@ SDD スキルセットを変更するときは必ずこのスキルを通す。�
 | 不具合報告起点の改善→PR ルート（実行可否の確認・修正対象リポジトリの同定・fix/skill-* を main から分岐・PR 本文の順序） | troubleshoot | maintain のこの表と下の誘導・CLAUDE.md 使い方と構成・`.claude/agents/sdd-improver.md`（委譲条項） |
 | `docs/maintain-log.md` の書式（1行＝`[新スキル採用]`\|`[新スキル却下]`\|`[不具合修正]`\|`[不具合却下]`・日付・対象・内容・理由。無ければ新規作成） | この契約表 | maintain の C 項・troubleshoot の手順7・CLAUDE.md の構成（docs/ 行） |
 | `sdd-improver` の派遣方法（general-purpose に `.claude/agents/sdd-improver.md` のパスを渡し Read で従わせる） | maintain の改善ループ節 | troubleshoot の手順2・5（参照のみ） |
+| マーケットプレイス配布境界（`bundle.json` の overlay 対象を一体で導入し、内部スキルは個別配布しない） | コレクションルートの `bundle.json` | CLAUDE.md の導入手順・AGENTS.md・scripts/validate・マーケットプレイス側 Architecture とテスト |
 
 契約の**事実の写し**（フェーズ数等）をこの表自体が含むため、契約を変えたらこの表も追随対象になる——1ファイル修正の失敗パターンを自分で犯さない。
 

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "0.1",
+  "schemaVersion": "0.2",
   "name": "Agent Skills Marketplace",
   "collections": [
     {
@@ -20,7 +20,8 @@
     },
     {
       "id": "sdd",
-      "name": "sdd",
+      "name": "SDD",
+      "kind": "bundle",
       "skills": [
         "analyze",
         "auto",
@@ -36,6 +37,9 @@
         "tasks",
         "troubleshoot",
         "verify"
+      ],
+      "bundles": [
+        "sdd"
       ]
     }
   ],
@@ -79,104 +83,45 @@
       "license": "MIT",
       "compatibility": "PowerPoint互換の編集・レンダリングツールが実行環境に必要。",
       "version": "0.1.0"
-    },
-    {
-      "id": "analyze",
-      "name": "analyze",
-      "description": "実装前に spec・plan・tasks の整合性を検証する読み取り専用チェック。受け入れ基準のカバレッジ表・矛盾・constitution 違反・検証コマンドの実行可能性を報告する。日本語トリガー例:「整合性をチェックして」「実装前チェックして」。通常は sdd オーケストレーター経由で呼ばれる。単体でも呼び出し可",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/analyze"
-    },
-    {
-      "id": "auto",
-      "name": "auto",
-      "description": "sdd のフルオート版オーケストレーター。ユーザーが「フルオートで」「自動で最後まで」「auto で」と明示的に指定した場合のみ使う。承認ゲートを審査サブエージェントの自動承認に置き換え、統合（マージ/PR）の手前まで無人で完走する。明示指定のない開発依頼では通常の sdd を使うこと。日本語トリガー例:「フルオートで作って」「自動で最後まで進めて」「auto でやって」",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/auto"
-    },
-    {
-      "id": "clarify",
-      "name": "clarify",
-      "description": "仕様書の曖昧箇所を1問ずつの質問で解消し、Q&A を記録して spec.md に反映する。日本語トリガー例:「仕様の曖昧なところを詰めて」「要確認を潰して」。通常は sdd オーケストレーター経由で呼ばれる。単体でも呼び出し可",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/clarify"
-    },
-    {
-      "id": "constitution",
-      "name": "constitution",
-      "description": "プロジェクトの開発原則（技術スタック方針・品質基準・禁止事項・レビュー方針）を対話で確定し docs/constitution.md に書く。プロジェクト初回のみ。日本語トリガー例:「プロジェクト原則を決めて」「開発ルールを作って」。通常は sdd オーケストレーター経由で呼ばれる。単体でも呼び出し可",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/constitution"
-    },
-    {
-      "id": "implement",
-      "name": "implement",
-      "description": "承認済みタスク一覧をサブエージェント駆動＋TDD で実装する。日本語トリガー例:「実装して」「タスクを実行して」。通常は sdd オーケストレーター経由で呼ばれる。単体でも呼び出し可",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/implement"
-    },
-    {
-      "id": "maintain",
-      "name": "maintain",
-      "description": "SDD スキルセット自体のメンテナンス用。既存スキルの改善・新スキルの追加・テンプレート変更を、スキル間の契約を壊さずに行う。日本語トリガー例:「SDD スキルを改善して」「新しい SDD スキルを追加して」「スキルセットをメンテして」「改善ループを回して」。フェーズスキルではないため sdd からは呼ばれない",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/maintain"
-    },
-    {
-      "id": "plan",
-      "name": "plan",
-      "description": "承認済み仕様書から技術計画（技術選定・コンポーネント分割・データモデル・エラー処理・テスト戦略）を作る。constitution 準拠チェック必須。日本語トリガー例:「技術計画を立てて」「アーキテクチャを設計して」。通常は sdd オーケストレーター経由で呼ばれる。単体でも呼び出し可",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/plan"
-    },
-    {
-      "id": "receive-review",
-      "name": "receive-review",
-      "description": "PR やユーザーから受け取ったレビュー指摘への対応。指摘を鵜呑みにせず技術的に検証してから、完了済み機能を再オープンして修正ルートに振り分ける。日本語トリガー例:「レビュー指摘に対応して」「PR コメントを反映して」「レビューが来たので対応して」。自分がレビューする側は review。receive-review 自体の挙動が想定外だったなら troubleshoot。フェーズスキルではないため sdd からは呼ばれない",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/receive-review"
-    },
-    {
-      "id": "review",
-      "name": "review",
-      "description": "実装コードを仕様書（spec.md）・constitution・tasks.md と突き合わせてレビューする。タスク単位（implement 中）と機能全体（verify 前の review フェーズ）の2モード。重大・重要の指摘は implement へ差し戻す。日本語トリガー例:「レビューして」「コードレビューして」「実装をチェックして」。通常は sdd オーケストレーター経由で呼ばれる。単体でも呼び出し可",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/review"
-    },
+    }
+  ],
+  "bundles": [
     {
       "id": "sdd",
-      "name": "sdd",
-      "description": "仕様駆動開発のオーケストレーター。新しい機能・アプリ・スクリプトの開発依頼すべてで最初に使う。仕様策定から受け入れ検証まで9フェーズをゲート付きで進行管理する。日本語トリガー例:「〜を作って」「機能を追加して」「〜を実装したい」「開発を再開して」「続きから」",
+      "name": "SDD",
+      "description": "Claude向けの仕様駆動開発ワークフロー一式。複数の連携スキル、専用エージェント、テンプレート、検証スクリプトをプロジェクトへまとめて導入するときに使う。",
       "collection": "sdd",
-      "path": "sdd/.claude/skills/sdd"
-    },
-    {
-      "id": "specify",
-      "name": "specify",
-      "description": "機能の仕様書（ユーザーストーリー＋Given/When/Then 受け入れ基準）を書く。WHAT/WHY のみを扱い、技術選定や実装方法（HOW）は書かない。日本語トリガー例:「仕様書を書いて」「要件をまとめて」。通常は sdd オーケストレーター経由で呼ばれる。単体でも呼び出し可",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/specify"
-    },
-    {
-      "id": "tasks",
-      "name": "tasks",
-      "description": "技術計画を実装タスク列に分解する。日本語トリガー例:「タスクに分解して」「実装タスクを作って」。通常は sdd オーケストレーター経由で呼ばれる。単体でも呼び出し可",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/tasks"
-    },
-    {
-      "id": "troubleshoot",
-      "name": "troubleshoot",
-      "description": "SDD スキル自体（フェーズスキル・auto・maintain・receive-review 等）が実運用で想定外の挙動をしたという報告から、そのスキルを直して PR にする。日本語トリガー例:「〇〇スキルがうまく動かなかった」「スキルの動きがおかしいので改善案を出してPRにして」「さっきのスキルの挙動が想定と違ったので直して」。直す対象がスキルではなく作ったプロダクトなら sdd・receive-review。意図的な改善依頼（「スキルを改善して」）は maintain へ。フェーズスキルではないため sdd からは呼ばれない",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/troubleshoot"
-    },
-    {
-      "id": "verify",
-      "name": "verify",
-      "description": "実装完了後、仕様書の全受け入れ基準を実際に実行して検証し、証拠（コマンドと出力）付きで完了報告する。証拠なしに完了と言うことを禁止。日本語トリガー例:「検証して」「完了確認して」「受け入れテストして」。通常は sdd オーケストレーター経由で呼ばれる。単体でも呼び出し可",
-      "collection": "sdd",
-      "path": "sdd/.claude/skills/verify"
+      "path": "sdd",
+      "install": {
+        "mode": "overlay",
+        "paths": [
+          ".claude",
+          "CLAUDE.md",
+          "scripts",
+          "specs",
+          "LICENSE",
+          "bundle.json"
+        ]
+      },
+      "skills": [
+        "analyze",
+        "auto",
+        "clarify",
+        "constitution",
+        "implement",
+        "maintain",
+        "plan",
+        "receive-review",
+        "review",
+        "sdd",
+        "specify",
+        "tasks",
+        "troubleshoot",
+        "verify"
+      ],
+      "license": "MIT",
+      "compatibility": "Claude Codeのプロジェクトローカルな.claudeディレクトリを使用する。",
+      "version": "0.1.0"
     }
   ]
 }

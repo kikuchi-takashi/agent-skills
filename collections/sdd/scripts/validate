@@ -51,6 +51,14 @@ for f in .claude/agents/*.md; do
     || { echo "NG frontmatter(agent): $n"; fail=1; }
 done
 
+# 5c. マーケットプレイス用バンドル境界
+[ -f bundle.json ] || { echo 'NG 配布: bundle.json'; fail=1; }
+grep -q '"mode": "overlay"' bundle.json || { echo 'NG 配布: overlay mode'; fail=1; }
+for p in .claude CLAUDE.md scripts specs LICENSE bundle.json; do
+  [ -e "$p" ] || { echo "NG 配布実在: $p"; fail=1; }
+  grep -q "\"$p\"" bundle.json || { echo "NG 配布対象: $p"; fail=1; }
+done
+
 # 6. 150行閾値の警告（失敗にはしない。description 規約の分割検討ライン）
 for d in .claude/skills/*/; do
   n=$(basename "$d"); lines=$(wc -l < "$d/SKILL.md")

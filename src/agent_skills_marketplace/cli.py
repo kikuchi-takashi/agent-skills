@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Sequence
 
+from .bundles import bundle_files, load_bundle
 from .discovery import load_skill, skill_files
 from .marketplace import build_index, install, write_index
 from .validation import validate_tree
@@ -29,7 +30,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    discover_parser = subparsers.add_parser("discover", help="list discovered skills")
+    discover_parser = subparsers.add_parser(
+        "discover", help="list discovered skills and bundles"
+    )
     _common_root(discover_parser)
 
     validate_parser = subparsers.add_parser("validate", help="validate skill files")
@@ -45,16 +48,24 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser.add_argument(
         "--name", default="Agent Skills Marketplace", help="marketplace display name"
     )
+    index_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="fail if the output does not match the generated index",
+    )
 
     install_parser = subparsers.add_parser(
-        "install", help="install one skill or an entire collection"
+        "install", help="install a skill, collection, or bundle"
     )
     install_parser.add_argument(
-        "query", help="skill name or collection:<category>"
+        "query", help="skill name, collection:<category>, or bundle:<id>"
     )
     _common_root(install_parser)
     install_parser.add_argument(
-        "--target", type=Path, required=True, help="flat agent skills directory"
+        "--target",
+        type=Path,
+        required=True,
+        help="flat skills directory, or project root for a bundle",
     )
     install_parser.add_argument(
         "--force", action="store_true", help="replace existing skill directories"
@@ -77,6 +88,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             for path in skill_files(args.root):
                 record = load_skill(path, args.root)
                 print("{0}/{1}\t{2}".format(record.collection, record.name, path))
+            for path in bundle_files(args.root):
+                bundle = load_bundle(path)
+                print("bundle:{0}\t{1}".format(bundle.id, bundle.path))
             return 0
 
         if args.command == "validate":
@@ -89,6 +103,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 0
 
         if args.command == "index":
+            if args.check:
+                expected = json.dumps(
+                    build_index(args.root, args.name), ensure_ascii=False, indent=2
+                ) + "\n"
+                try:
+                    actual = args.output.read_text(encoding="utf-8")
+                except FileNotFoundError:
+                    raise ValueError("index does not exist: {0}".format(args.output))
+                if actual != expected:
+                    raise ValueError(
+                        "index is stale: regenerate {0}".format(args.output)
+                    )
+                print("OK: {0} is current".format(args.output))
+                return 0
             write_index(args.root, args.output, args.name)
             print("Wrote {0}".format(args.output))
             return 0
