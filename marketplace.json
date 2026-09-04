@@ -15,7 +15,8 @@
       "name": "PPTX",
       "skills": [
         "pptx-create",
-        "pptx-edit"
+        "pptx-edit",
+        "pptx-review"
       ]
     },
     {
@@ -64,22 +65,32 @@
     {
       "id": "pptx-create",
       "name": "pptx-create",
-      "description": "要件や原稿からPowerPointプレゼンテーションを設計・作成する。スライド構成、レイアウト、発表者ノートが必要なときに使う。",
+      "description": "要件・原稿・資料から、編集可能なPowerPoint（.pptx）を新規に設計・生成する。聴衆と目的の整理、主張を一文で書くスライド構成、生成前のデザインロック、python-pptxによる生成、描画画像とlintによる品質確認までを一続きに行う。「PPTを作って」「スライドにまとめて」「プレゼン資料を作成して」「提案書をパワポで」など、新しいデッキを作るときに使う。既存デッキの修正は pptx-edit、監査だけなら pptx-review を使う。",
       "collection": "pptx",
       "path": "pptx/pptx-create",
       "license": "MIT",
-      "compatibility": "PowerPoint互換の生成・検証ツールが実行環境に必要。",
-      "version": "0.1.0"
+      "compatibility": "Python 3.9+ と python-pptx（pip install python-pptx）。視覚確認に LibreOffice（soffice）と Poppler（pdftoppm）。代替として pptxgenjs（Node.js）も可。",
+      "version": "1.0.0"
     },
     {
       "id": "pptx-edit",
       "name": "pptx-edit",
-      "description": "既存のPowerPointを編集し、レイアウト、文章、図表、ノートを整える。スライドの修正や品質確認に使う。",
+      "description": "既存のPowerPoint（.pptx/.potx）を、元のデザインシステム（テーマ色・書体・レイアウト）を壊さずに編集する。文言の差替、スライドの追加・削除・並べ替え、テンプレへの流し込み、図表データの更新、生成AIっぽい装飾の除去、体裁の修正に使う。「このPPTを直して」「スライド3を修正」「テンプレに流し込んで」「AIっぽさを消して」など、既存ファイルがあるときに使う。新規作成は pptx-create、監査だけなら pptx-review。",
       "collection": "pptx",
       "path": "pptx/pptx-edit",
       "license": "MIT",
-      "compatibility": "PowerPoint互換の編集・レンダリングツールが実行環境に必要。",
-      "version": "0.1.0"
+      "compatibility": "Python 3.9+ と python-pptx。構造変更には zip/unzip と XML 編集。視覚確認に LibreOffice（soffice）と Poppler（pdftoppm）。",
+      "version": "1.0.0"
+    },
+    {
+      "id": "pptx-review",
+      "name": "pptx-review",
+      "description": "PowerPoint（.pptx）を変更せずに監査し、はみ出し・キャンバス外・書体の混在・生成AIらしい装飾や文章・論理構成・デザインロックとの乖離を、機械検査（同梱の pptx_lint.py、標準ライブラリのみ）と描画画像の目視で判定して報告する。「このPPTをレビューして」「AIっぽくないか見て」「納品前にチェック」「デッキを監査」のとき、および pptx-create / pptx-edit の品質確認を別コンテキストで行うときに使う。修正はしない。修正は pptx-edit。",
+      "collection": "pptx",
+      "path": "pptx/pptx-review",
+      "license": "MIT",
+      "compatibility": "Python 3.9+（lint は標準ライブラリのみ）。視覚確認に LibreOffice（soffice）と Poppler（pdftoppm）。",
+      "version": "1.0.0"
     },
     {
       "id": "sdd",
