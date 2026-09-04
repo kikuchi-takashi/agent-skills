@@ -1,68 +1,55 @@
 #!/usr/bin/env bash
-# SDD スキルセットの契約検証（maintain「変更後の必須検証」の自動化）
-# 使い方: scripts/validate（スキルセットのルートから、またはどこからでも）
-# 注意: フェーズ数を変えたら本スクリプトの期待値（9フェーズ・列挙値）も更新すること
-#       （maintain チェックリスト B の追随対象）
+# SDD collection contract checks. Run from any directory.
 
 set -u
 cd "$(dirname "$0")/.." || exit 1
 fail=0
+count=0
 
-# 1. frontmatter 全数（name/description 2キー・name とディレクトリ名の一致）
-for d in .claude/skills/*/; do
+for d in */; do
+  [ -f "$d/SKILL.md" ] || continue
+  count=$((count + 1))
   n=$(basename "$d")
   { head -1 "$d/SKILL.md" | grep -qx -- '---' \
     && grep -q "^name: $n$" "$d/SKILL.md" \
-    && grep -q '^description: "' "$d/SKILL.md"; } \
+    && grep -q '^description: ' "$d/SKILL.md" \
+    && grep -q '^license: MIT$' "$d/SKILL.md"; } \
     || { echo "NG frontmatter: $n"; fail=1; }
 done
 
-# 2. フェーズ数の写しの一致
-grep -q '9フェーズ' .claude/skills/sdd/SKILL.md          || { echo 'NG フェーズ数: sdd description'; fail=1; }
-grep -q '現在9'     .claude/skills/maintain/SKILL.md || { echo 'NG フェーズ数: maintain 契約表'; fail=1; }
-grep -q '9フェーズスキル' CLAUDE.md                       || { echo 'NG フェーズ数: CLAUDE.md 構成'; fail=1; }
+[ "$count" -eq 15 ] || { echo "NG skill count: $count (expected 15)"; fail=1; }
+grep -q '9フェーズ' sdd/SKILL.md || { echo 'NG phase count: sdd'; fail=1; }
+grep -q '現在9' sdd-maintain/SKILL.md || { echo 'NG phase count: sdd-maintain'; fail=1; }
+grep -q '9フェーズ' README.md || { echo 'NG phase count: README'; fail=1; }
 
-# 3. state.md 現在フェーズの列挙値（正: sdd/SKILL.md）
 grep -q '現在フェーズ: constitution | specify | clarify | plan | tasks | analyze | implement | review | verify | 完了' \
-  .claude/skills/sdd/SKILL.md || { echo 'NG: state.md 列挙値'; fail=1; }
+  sdd/SKILL.md || { echo 'NG state.md phase values'; fail=1; }
 
-# 4. テンプレート・プロンプトの実在
-for p in specify/template.md plan/template.md tasks/template.md \
-         constitution/template.md sdd/spec-lite-template.md \
-         implement/implementer-prompt.md; do
-  [ -f ".claude/skills/$p" ] || { echo "NG 実在: $p"; fail=1; }
+for p in sdd-specify/template.md sdd-plan/template.md sdd-tasks/template.md \
+         sdd-constitution/template.md sdd/spec-lite-template.md \
+         sdd-implement/implementer-prompt.md; do
+  [ -f "$p" ] || { echo "NG resource: $p"; fail=1; }
 done
 
-# 5. 節名参照の実在（番号参照の張り替え先が消えていないか）
-grep -q '統合方法の選択肢'   .claude/skills/verify/SKILL.md  || { echo 'NG 参照: verify「統合方法の選択肢」'; fail=1; }
-grep -q '## 質問の優先順位' .claude/skills/clarify/SKILL.md || { echo 'NG 参照: clarify「質問の優先順位」'; fail=1; }
-grep -q '## 変更の種類別チェックリスト' .claude/skills/maintain/SKILL.md || { echo 'NG 参照: maintain「変更の種類別チェックリスト」'; fail=1; }
-grep -q '## 変更後の必須検証（コミット前）' .claude/skills/maintain/SKILL.md || { echo 'NG 参照: maintain「変更後の必須検証（コミット前）」'; fail=1; }
-grep -q '## 改善ループの回し方' .claude/skills/maintain/SKILL.md || { echo 'NG 参照: maintain「改善ループの回し方」'; fail=1; }
-grep -q '## 壊してはいけない契約（契約表' .claude/skills/maintain/SKILL.md || { echo 'NG 参照: maintain「壊してはいけない契約（契約表」'; fail=1; }
-grep -q '修正ループ: N/10' .claude/skills/sdd/SKILL.md || { echo 'NG 契約: state.md 修正ループ行'; fail=1; }
-grep -q 'fix/skill-' .claude/skills/troubleshoot/SKILL.md || { echo 'NG 契約: troubleshoot のブランチ名規約'; fail=1; }
-grep -q '\[不具合却下\]' .claude/skills/troubleshoot/SKILL.md || { echo 'NG 契約: troubleshoot の却下記録書式'; fail=1; }
+grep -q '統合方法の選択肢' sdd-verify/SKILL.md || { echo 'NG section: sdd-verify'; fail=1; }
+grep -q '## 質問の優先順位' sdd-clarify/SKILL.md || { echo 'NG section: sdd-clarify'; fail=1; }
+grep -q '## 変更の種類別チェックリスト' sdd-maintain/SKILL.md || { echo 'NG section: sdd-maintain checklist'; fail=1; }
+grep -q '## 改善ループの回し方' sdd-maintain/SKILL.md || { echo 'NG section: sdd-maintain loop'; fail=1; }
+grep -q '修正ループ: N/10' sdd/SKILL.md || { echo 'NG state.md repair loop'; fail=1; }
+grep -q 'fix/skill-' sdd-troubleshoot/SKILL.md || { echo 'NG troubleshoot branch rule'; fail=1; }
+grep -q '\[不具合却下\]' sdd-troubleshoot/SKILL.md || { echo 'NG troubleshoot rejection log'; fail=1; }
 
-# 5b. エージェント定義の frontmatter（name とファイル名の一致・description の実在）
-for f in .claude/agents/*.md; do
-  n=$(basename "$f" .md)
-  { grep -q "^name: $n$" "$f" && grep -q '^description: ' "$f"; } \
-    || { echo "NG frontmatter(agent): $n"; fail=1; }
+if rg -n '\.claude|CLAUDE\.md|bundle\.json|bundle:sdd|sdd-[a-z-]*sdd-' \
+  -- */SKILL.md README.md AGENTS.md; then
+  echo 'NG current docs contain legacy client-specific or malformed identifiers'
+  fail=1
+fi
+
+for d in */; do
+  [ -f "$d/SKILL.md" ] || continue
+  n=$(basename "$d")
+  lines=$(wc -l < "$d/SKILL.md")
+  [ "$lines" -gt 150 ] && echo "WARN 150 lines exceeded: $n ($lines)"
 done
 
-# 5c. マーケットプレイス用バンドル境界
-[ -f bundle.json ] || { echo 'NG 配布: bundle.json'; fail=1; }
-grep -q '"mode": "overlay"' bundle.json || { echo 'NG 配布: overlay mode'; fail=1; }
-for p in .claude CLAUDE.md scripts specs LICENSE bundle.json; do
-  [ -e "$p" ] || { echo "NG 配布実在: $p"; fail=1; }
-  grep -q "\"$p\"" bundle.json || { echo "NG 配布対象: $p"; fail=1; }
-done
-
-# 6. 150行閾値の警告（失敗にはしない。description 規約の分割検討ライン）
-for d in .claude/skills/*/; do
-  n=$(basename "$d"); lines=$(wc -l < "$d/SKILL.md")
-  [ "$lines" -gt 150 ] && echo "WARN 150行超: $n (${lines}行)"
-done
-
-if [ $fail -eq 0 ]; then echo 'VALIDATE OK'; else echo 'VALIDATE FAILED'; exit 1; fi
+if [ "$fail" -eq 0 ]; then echo 'VALIDATE OK'; else echo 'VALIDATE FAILED'; exit 1; fi

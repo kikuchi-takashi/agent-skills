@@ -10,7 +10,7 @@ Agent Skills 互換のスキルを、コレクション単位で整理・検証�
 - マーケットプレイスのインデックスはスキルから自動生成する
 - 初期版は外部サービスを持たず、ローカルファイルと Git リポジトリで運用する
 
-通常の配布対象は `collections/<category>/<skill-name>/SKILL.md` の2階層です。内部コンポーネントをまとめて導入する必要があるコレクションは `bundle.json` を持つバンドルとして配布します。`collections/sdd/` はこの方式で `.claude` ツリー一式をプロジェクトへ導入します。
+すべての配布対象は `collections/<category>/<skill-name>/SKILL.md` の2階層です。各スキルは単独でコピーでき、コレクション一括インストールでも同じスキル群をフラットに配置します。特定クライアント専用の設定ツリーは配布形式に含めません。
 
 ## セットアップ
 
@@ -45,11 +45,11 @@ skills install pdf-extract --root collections --target .installed/skills
 # コレクション内のスキルをまとめてインストール
 skills install collection:pdf --root collections --target .installed/skills
 
-# SDD バンドルをプロジェクトルートへインストール
-skills install bundle:sdd --root collections --target /path/to/project
+# SDD スキル一式をフラットなスキルディレクトリへインストール
+skills install collection:sdd --root collections --target ~/.agents/skills
 ```
 
-通常の `install` は既存スキルディレクトリを上書きしません。バンドルは既存ツリーへファイル単位で重ねますが、衝突を1件でも検出するとコピー前に停止します。既存の `CLAUDE.md` などを残す場合は手動で内容を統合してください。内容を確認して同名ファイルだけを置き換える場合に限り `--force` を指定できます。既存ディレクトリ全体や無関係なファイルは削除しません。
+`install` は既存スキルディレクトリを上書きしません。コレクション一括導入でも全出力先を先に検査し、衝突が1件でもあれば何もコピーせず停止します。内容を確認して置き換える場合だけ `--force` を指定してください。
 
 ## スキルの追加
 

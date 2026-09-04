@@ -19,6 +19,7 @@ metadata:
 
 # Demo
 """
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class MarketplaceTests(unittest.TestCase):
@@ -30,32 +31,6 @@ class MarketplaceTests(unittest.TestCase):
         )
         return path
 
-    def make_bundle(self, root, bundle_id="bundle", skill_name="internal"):
-        path = root / bundle_id
-        skill = path / ".claude" / "skills" / skill_name
-        skill.mkdir(parents=True)
-        (skill / "SKILL.md").write_text(
-            SKILL.replace("demo-skill", skill_name), encoding="utf-8"
-        )
-        (path / "CLAUDE.md").write_text("# Bundle\n", encoding="utf-8")
-        (path / "LICENSE").write_text("test license\n", encoding="utf-8")
-        manifest = {
-            "schemaVersion": "0.1",
-            "id": bundle_id,
-            "name": "Test Bundle",
-            "description": "A coordinated test bundle for project installation.",
-            "version": "1.0.0",
-            "license": "MIT",
-            "install": {
-                "mode": "overlay",
-                "paths": [".claude", "CLAUDE.md", "LICENSE"],
-            },
-        }
-        (path / "bundle.json").write_text(
-            json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
-        )
-        return path
-
     def test_index_discovers_skills_and_collections(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "collections"
@@ -63,6 +38,7 @@ class MarketplaceTests(unittest.TestCase):
             index = build_index(root, "Test Marketplace")
 
             self.assertEqual(index["name"], "Test Marketplace")
+            self.assertEqual(index["schemaVersion"], "0.1")
             self.assertEqual(index["collections"][0]["id"], "demo")
             self.assertEqual(index["skills"][0]["id"], "demo-skill")
             self.assertEqual(index["skills"][0]["version"], "1.0.0")
@@ -145,147 +121,20 @@ class MarketplaceTests(unittest.TestCase):
 
             self.assertTrue((skill / "SKILL.md").exists())
 
-    def test_index_lists_bundle_without_individual_skill_entry(self):
+    def test_sdd_collection_installs_as_portable_skills(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "collections"
-            self.make_skill(root)
-            self.make_bundle(root)
+            target = Path(directory) / "installed"
 
-            index = build_index(root, "Test Marketplace")
-
-            self.assertEqual([item["id"] for item in index["skills"]], ["demo-skill"])
-            self.assertEqual(index["schemaVersion"], "0.2")
-            self.assertEqual(index["bundles"][0]["id"], "bundle")
-            self.assertEqual(index["bundles"][0]["version"], "1.0.0")
-            self.assertEqual(index["bundles"][0]["skills"], ["internal"])
-            self.assertEqual(index["collections"][1]["kind"], "bundle")
-
-    def test_discover_lists_bundle(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "collections"
-            self.make_skill(root)
-            self.make_bundle(root)
-            stdout = io.StringIO()
-
-            with redirect_stdout(stdout), redirect_stderr(io.StringIO()):
-                result = main(["discover", "--root", str(root)])
-
-            self.assertEqual(result, 0)
-            self.assertIn("bundle:bundle", stdout.getvalue())
-
-    def test_skill_names_are_unique_across_bundles(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "collections"
-            self.make_skill(root)
-            self.make_bundle(root, skill_name="demo-skill")
-
-            errors = validate_tree(root)
-
-            self.assertTrue(any("duplicate skill name" in error for error in errors))
-
-    def test_bundle_install_overlays_declared_paths(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "collections"
-            target = Path(directory) / "project"
-            self.make_skill(root)
-            self.make_bundle(root)
-
-            installed = install("bundle:bundle", root, target)
-
-            self.assertEqual(
-                installed,
-                [target / ".claude", target / "CLAUDE.md", target / "LICENSE"],
-            )
-            self.assertTrue(
-                (target / ".claude" / "skills" / "internal" / "SKILL.md").is_file()
-            )
-            self.assertTrue((target / "CLAUDE.md").is_file())
-
-    def test_bundle_only_root_is_valid(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "collections"
-            self.make_bundle(root)
-
-            self.assertEqual(validate_tree(root), [])
-
-    def test_bundle_collision_is_checked_before_copying(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "collections"
-            target = Path(directory) / "project"
-            self.make_skill(root)
-            self.make_bundle(root)
-            target.mkdir()
-            (target / "CLAUDE.md").write_text("user file\n", encoding="utf-8")
-
-            with self.assertRaises(FileExistsError):
-                install("bundle:bundle", root, target)
-
-            self.assertFalse((target / ".claude").exists())
-            self.assertEqual(
-                (target / "CLAUDE.md").read_text(encoding="utf-8"), "user file\n"
+            installed = install(
+                "collection:sdd", PROJECT_ROOT / "collections", target
             )
 
-    def test_force_replaces_only_colliding_bundle_files(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "collections"
-            target = Path(directory) / "project"
-            self.make_skill(root)
-            self.make_bundle(root)
-            target.mkdir()
-            (target / "CLAUDE.md").write_text("old\n", encoding="utf-8")
-            unrelated = target / ".claude" / "keep.txt"
-            unrelated.parent.mkdir()
-            unrelated.write_text("keep\n", encoding="utf-8")
+            self.assertEqual(len(installed), 15)
+            self.assertTrue((target / "sdd" / "SKILL.md").is_file())
+            self.assertTrue((target / "sdd-improver" / "SKILL.md").is_file())
+            self.assertTrue((target / "sdd-specify" / "template.md").is_file())
 
-            install("bundle:bundle", root, target, force=True)
-
-            self.assertEqual(
-                (target / "CLAUDE.md").read_text(encoding="utf-8"), "# Bundle\n"
-            )
-            self.assertEqual(unrelated.read_text(encoding="utf-8"), "keep\n")
-
-    def test_bundle_install_rejects_destination_symlink(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "collections"
-            target = Path(directory) / "project"
-            external = Path(directory) / "external"
-            self.make_skill(root)
-            self.make_bundle(root)
-            target.mkdir()
-            external.mkdir()
-            (target / ".claude").symlink_to(external, target_is_directory=True)
-
-            with self.assertRaisesRegex(ValueError, "contains a symlink"):
-                install("bundle:bundle", root, target, force=True)
-
-            self.assertEqual(list(external.iterdir()), [])
-
-    def test_collection_query_for_bundle_requires_explicit_bundle_prefix(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "collections"
-            self.make_skill(root)
-            self.make_bundle(root)
-
-            with self.assertRaisesRegex(ValueError, "use bundle:bundle"):
-                install("collection:bundle", root, Path(directory) / "project")
-
-    def test_bundle_rejects_unsafe_manifest_path(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "collections"
-            self.make_skill(root)
-            bundle = self.make_bundle(root)
-            manifest_path = bundle / "bundle.json"
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            manifest["install"]["paths"] = ["../outside"]
-            manifest_path.write_text(
-                json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
-            )
-
-            errors = validate_tree(root)
-
-            self.assertTrue(any("unsafe install path" in error for error in errors))
-
-    def test_nested_skill_without_bundle_manifest_is_rejected(self):
+    def test_nested_skill_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "collections"
             nested = root / "demo" / "extra" / "demo-skill"

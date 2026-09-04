@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-from .bundles import bundle_files, load_bundle
 from .discovery import load_skill, skill_files
 from .marketplace import build_index, install, write_index
 from .validation import validate_tree
@@ -30,9 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    discover_parser = subparsers.add_parser(
-        "discover", help="list discovered skills and bundles"
-    )
+    discover_parser = subparsers.add_parser("discover", help="list discovered skills")
     _common_root(discover_parser)
 
     validate_parser = subparsers.add_parser("validate", help="validate skill files")
@@ -55,17 +52,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     install_parser = subparsers.add_parser(
-        "install", help="install a skill, collection, or bundle"
+        "install", help="install one skill or an entire collection"
     )
     install_parser.add_argument(
-        "query", help="skill name, collection:<category>, or bundle:<id>"
+        "query", help="skill name or collection:<category>"
     )
     _common_root(install_parser)
     install_parser.add_argument(
         "--target",
         type=Path,
         required=True,
-        help="flat skills directory, or project root for a bundle",
+        help="flat agent skills directory",
     )
     install_parser.add_argument(
         "--force", action="store_true", help="replace existing skill directories"
@@ -88,9 +85,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             for path in skill_files(args.root):
                 record = load_skill(path, args.root)
                 print("{0}/{1}\t{2}".format(record.collection, record.name, path))
-            for path in bundle_files(args.root):
-                bundle = load_bundle(path)
-                print("bundle:{0}\t{1}".format(bundle.id, bundle.path))
             return 0
 
         if args.command == "validate":

@@ -1,5 +1,9 @@
-# SDD bundle instructions
+# SDD collection instructions
 
-This directory is a self-contained Claude-oriented SDD bundle, not a normal marketplace collection of independently installable skills. `bundle.json` is the distribution manifest; it installs the declared runtime paths together into a project root. Preserve the `.claude/skills/`, `.claude/agents/`, `CLAUDE.md`, templates, and `scripts/validate` relationship. Do not list internal skills as individually installable or move them to `collections/sdd/<skill-name>/` without a separate approved migration.
+This collection contains portable, independently installable Agent Skills. Keep every package directly under `collections/sdd/<skill-name>/`, with `name` matching the directory. Use `sdd` for the main orchestrator and the `sdd-` prefix for every other SDD skill so flat installation does not introduce generic names.
 
-For SDD-only maintenance, read `CLAUDE.md` and `.claude/skills/maintain/SKILL.md`, follow their contract table and change-specific checks, then run `scripts/validate`. If runtime files change, confirm `bundle.json` still includes every required top-level path. Also run the root repository verification because bundle validation, index metadata, or installation may be affected. Regenerate `marketplace.json`; never add an internal SDD skill as an individually installable entry.
+Before changing the workflow, read `README.md`, `sdd-maintain/SKILL.md`, and every affected skill and packaged resource. Keep state.md phase values unprefixed (`specify`, `plan`, and so on); use prefixed names only for installed skill identifiers. Templates and prompts must stay inside the one skill that consumes them, with relative references.
+
+Do not add client-specific configuration directories or require a particular agent's invocation API. Optional delegation may be described only with a direct fallback that preserves the same safety and approval boundaries. Historical files under `docs/genesis/` and `docs/trials/` are records, not current installation instructions.
+
+Run `collections/sdd/scripts/validate`, then all verification required by the root `AGENTS.md`. Regenerate `marketplace.json` through the CLI and test `collection:sdd` installation into an empty flat target.

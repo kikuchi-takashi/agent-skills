@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "0.2",
+  "schemaVersion": "0.1",
   "name": "Agent Skills Marketplace",
   "collections": [
     {
@@ -20,26 +20,23 @@
     },
     {
       "id": "sdd",
-      "name": "SDD",
-      "kind": "bundle",
+      "name": "sdd",
       "skills": [
-        "analyze",
-        "auto",
-        "clarify",
-        "constitution",
-        "implement",
-        "maintain",
-        "plan",
-        "receive-review",
-        "review",
         "sdd",
-        "specify",
-        "tasks",
-        "troubleshoot",
-        "verify"
-      ],
-      "bundles": [
-        "sdd"
+        "sdd-analyze",
+        "sdd-auto",
+        "sdd-clarify",
+        "sdd-constitution",
+        "sdd-implement",
+        "sdd-improver",
+        "sdd-maintain",
+        "sdd-plan",
+        "sdd-receive-review",
+        "sdd-review",
+        "sdd-specify",
+        "sdd-tasks",
+        "sdd-troubleshoot",
+        "sdd-verify"
       ]
     }
   ],
@@ -83,45 +80,141 @@
       "license": "MIT",
       "compatibility": "PowerPoint互換の編集・レンダリングツールが実行環境に必要。",
       "version": "0.1.0"
-    }
-  ],
-  "bundles": [
+    },
     {
       "id": "sdd",
-      "name": "SDD",
-      "description": "Claude向けの仕様駆動開発ワークフロー一式。複数の連携スキル、専用エージェント、テンプレート、検証スクリプトをプロジェクトへまとめて導入するときに使う。",
+      "name": "sdd",
+      "description": "仕様駆動開発を明示した依頼、または specs/*/state.md があるSDD作業の再開で使う。仕様策定から受け入れ検証まで9フェーズを承認ゲート付きで進行管理する。日本語トリガー例:「SDDで機能を作って」「仕様駆動で実装して」「SDDの続きから」",
       "collection": "sdd",
-      "path": "sdd",
-      "install": {
-        "mode": "overlay",
-        "paths": [
-          ".claude",
-          "CLAUDE.md",
-          "scripts",
-          "specs",
-          "LICENSE",
-          "bundle.json"
-        ]
-      },
-      "skills": [
-        "analyze",
-        "auto",
-        "clarify",
-        "constitution",
-        "implement",
-        "maintain",
-        "plan",
-        "receive-review",
-        "review",
-        "sdd",
-        "specify",
-        "tasks",
-        "troubleshoot",
-        "verify"
-      ],
+      "path": "sdd/sdd",
       "license": "MIT",
-      "compatibility": "Claude Codeのプロジェクトローカルな.claudeディレクトリを使用する。",
-      "version": "0.1.0"
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-analyze",
+      "name": "sdd-analyze",
+      "description": "SDD実装前にspec・plan・tasksの整合性、受け入れ基準の網羅性、constitution違反を読み取り専用で検査する。日本語トリガー例:「SDD成果物の整合性をチェックして」「SDDの実装前チェックをして」。通常は sdd 経由で呼ばれ、単体でも利用できる",
+      "collection": "sdd",
+      "path": "sdd/sdd-analyze",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-auto",
+      "name": "sdd-auto",
+      "description": "sdd のフルオート版オーケストレーター。ユーザーが「フルオートで」「自動で最後まで」「auto で」と明示的に指定した場合のみ使う。承認判定を自動化し、統合（マージ/PR）の手前まで無人で完走する。明示指定のない開発依頼では通常の sdd を使うこと。日本語トリガー例:「フルオートで作って」「自動で最後まで進めて」「auto でやって」",
+      "collection": "sdd",
+      "path": "sdd/sdd-auto",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-clarify",
+      "name": "sdd-clarify",
+      "description": "SDDのspec.mdにある曖昧箇所を1問ずつ解消し、Q&Aを記録して仕様へ反映する。日本語トリガー例:「SDD仕様の曖昧なところを詰めて」「specの要確認を潰して」。通常は sdd 経由で呼ばれ、単体でも利用できる",
+      "collection": "sdd",
+      "path": "sdd/sdd-clarify",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-constitution",
+      "name": "sdd-constitution",
+      "description": "SDD導入時に開発原則、品質基準、禁止事項、レビュー方針を対話で確定しdocs/constitution.mdへ書く。日本語トリガー例:「SDDの開発原則を決めて」「SDD constitutionを作って」。通常は sdd 経由で初回だけ呼ばれ、単体でも利用できる",
+      "collection": "sdd",
+      "path": "sdd/sdd-constitution",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-implement",
+      "name": "sdd-implement",
+      "description": "承認済みタスク一覧をTDDで実装し、利用可能なら独立した実装担当へ安全に分担する。日本語トリガー例:「SDDの承認済みタスクを実装して」「SDD実装フェーズを進めて」。通常は sdd オーケストレーター経由で呼ばれる。単体でも呼び出し可",
+      "collection": "sdd",
+      "path": "sdd/sdd-implement",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-improver",
+      "name": "sdd-improver",
+      "description": "SDD スキルセットの批評レビュー、実戦トライアル、整合性監査のいずれか1周を実行し、重大度付きの指摘と修正案を返す。日本語トリガー例:「SDDスキルを評価して」「SDDを監査して」「改善ループを回して」。フェーズスキルではないため sdd からは呼ばれない",
+      "collection": "sdd",
+      "path": "sdd/sdd-improver",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-maintain",
+      "name": "sdd-maintain",
+      "description": "SDD スキルセット自体を、共有契約を壊さず追加・更新・整理する。日本語トリガー例:「SDDスキルを改善して」「新しいSDDスキルを追加して」「SDDのテンプレートを変更して」。実運用上の不具合報告は sdd-troubleshoot、評価だけなら sdd-improver を使う",
+      "collection": "sdd",
+      "path": "sdd/sdd-maintain",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-plan",
+      "name": "sdd-plan",
+      "description": "承認済みSDD仕様から技術選定、構成、データモデル、エラー処理、テスト戦略を含むplan.mdを作る。日本語トリガー例:「SDDの技術計画を立てて」「承認済みspecから設計して」。通常は sdd 経由で呼ばれ、単体でも利用できる",
+      "collection": "sdd",
+      "path": "sdd/sdd-plan",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-receive-review",
+      "name": "sdd-receive-review",
+      "description": "SDDで完了した機能へのPR・ユーザーレビュー指摘を検証し、state.mdを再オープンして適切な修正経路へ戻す。日本語トリガー例:「SDD機能のPRコメントに対応して」「完了済みSDDのレビュー指摘を反映して」。レビューする側は sdd-review を使う",
+      "collection": "sdd",
+      "path": "sdd/sdd-receive-review",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-review",
+      "name": "sdd-review",
+      "description": "SDD実装コードをspec.md・constitution・tasks.mdと突き合わせ、タスク単位または機能全体でレビューする。日本語トリガー例:「SDD実装をレビューして」「spec準拠をコードレビューして」。通常は sdd 経由で呼ばれ、単体でも利用できる",
+      "collection": "sdd",
+      "path": "sdd/sdd-review",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-specify",
+      "name": "sdd-specify",
+      "description": "SDDの機能仕様書（ユーザーストーリー＋Given/When/Then受け入れ基準）を書く。WHAT/WHYのみを扱う。日本語トリガー例:「SDDの仕様書を書いて」「SDDの要件をまとめて」。通常は sdd 経由で呼ばれ、単体でも利用できる",
+      "collection": "sdd",
+      "path": "sdd/sdd-specify",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-tasks",
+      "name": "sdd-tasks",
+      "description": "承認済みSDD技術計画を、完了条件と検証コマンドを持つ実装タスク列へ分解する。日本語トリガー例:「SDD計画をタスクに分解して」「plan.mdから実装タスクを作って」。通常は sdd 経由で呼ばれ、単体でも利用できる",
+      "collection": "sdd",
+      "path": "sdd/sdd-tasks",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-troubleshoot",
+      "name": "sdd-troubleshoot",
+      "description": "SDDスキル自体が実運用で想定外に動いた具体的な事象を診断し、承認後に修正とPR準備を行う。日本語トリガー例:「SDDスキルがうまく動かなかった」「SDDスキルの不具合を診断して」。一般的な製品不具合や能動的な改善には使わない",
+      "collection": "sdd",
+      "path": "sdd/sdd-troubleshoot",
+      "license": "MIT",
+      "version": "2.0.0"
+    },
+    {
+      "id": "sdd-verify",
+      "name": "sdd-verify",
+      "description": "SDD実装後に仕様書の全受け入れ基準を実行し、コマンドと出力を証拠として完了判定する。日本語トリガー例:「SDDの受け入れ検証をして」「specの全ACを確認して」。通常は sdd 経由で呼ばれ、単体でも利用できる",
+      "collection": "sdd",
+      "path": "sdd/sdd-verify",
+      "license": "MIT",
+      "version": "2.0.0"
     }
   ]
 }

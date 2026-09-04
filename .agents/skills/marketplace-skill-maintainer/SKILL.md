@@ -1,6 +1,6 @@
 ---
 name: marketplace-skill-maintainer
-description: Add, update, remove, or review distributable skills or coordinated bundles and regenerate the index in this Agent Skills marketplace repository. Use for marketplace package maintenance; do not use for merely using an installed skill.
+description: Add, update, remove, or review distributable skills and regenerate the index in this Agent Skills marketplace repository. Use for marketplace package maintenance; do not use for merely using an installed skill.
 ---
 
 # Marketplace Skill Maintainer
@@ -12,7 +12,7 @@ Maintain this repository's portable skill catalog without widening the user's re
 1. Read the root `AGENTS.md`, `README.md`, and `docs/ARCHITECTURE.md`, plus scoped instructions and the complete target package.
 2. Inspect `git status --short`. Treat existing changes as user work and keep unrelated files untouched.
 3. Classify the request as add, update, explicit delete/rename, review, or index repair. Do not turn review into modification or deletion into a broader cleanup.
-4. Determine whether the target is a standalone skill or a coordinated `bundle.json` package. For `collections/sdd/`, also follow its local `AGENTS.md` instead of converting its internal Claude layout.
+4. Confirm that the target remains a standalone portable skill. For `collections/sdd/`, also follow its local `AGENTS.md` and namespacing rules.
 
 ## Maintain a portable skill
 
@@ -24,13 +24,6 @@ Maintain this repository's portable skill catalog without widening the user's re
 - Inspect scripts and external material before use. Record compatible provenance and required notices; do not assume a frontmatter license proves ownership.
 
 For a review-only request, report findings with file locations and do not edit. For a removal or rename, proceed only when explicitly requested and search the repository for consumers first.
-
-## Maintain a bundle
-
-- Use a collection-root `bundle.json` only when components must retain a shared project layout and cannot be installed independently.
-- Keep install paths relative, minimal, non-overlapping, and complete. Include a license file in the distributed paths.
-- Treat `--target` as a project root. Preserve the preflight guarantee: without `--force`, any file collision stops before copying; with `--force`, replace only colliding files and never remove whole directories or unrelated content.
-- Index internal skills as bundle contents, not individually installable packages. Test installation into an empty target, collision refusal, and explicit file replacement.
 
 ## Verify and index
 

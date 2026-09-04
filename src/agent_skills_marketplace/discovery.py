@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .bundles import BUNDLE_FILE
 from .frontmatter import FrontmatterError, parse_skill_file
 
 
@@ -43,15 +42,7 @@ class SkillRecord:
 
 
 def skill_files(root: Path) -> List[Path]:
-    """Return individually distributable skills, excluding bundle collections."""
-
-    files: List[Path] = []
-    for path in root.rglob("SKILL.md"):
-        relative = path.relative_to(root)
-        collection = root / relative.parts[0]
-        if not (collection / BUNDLE_FILE).is_file():
-            files.append(path)
-    return sorted(files)
+    return sorted(root.rglob("SKILL.md"))
 
 
 def load_skill(path: Path, root: Path) -> SkillRecord:

@@ -11,4 +11,4 @@ For a normal skill contribution:
 5. Run the validation commands in `AGENTS.md` and regenerate `marketplace.json` through the CLI.
 6. Inspect the full diff and report behavior, validation evidence, index impact, and any compatibility risk.
 
-Use a collection-root `bundle.json` only for components that must be distributed as one project tree. Its overlay paths must be relative, non-overlapping, limited to runtime files, and include `LICENSE`. Verify bundle installation in an empty target and its no-partial-write behavior on collisions.
+Client-specific configuration and project overlays are outside this marketplace format. Package every distributable capability as an independent Agent Skills directory.
