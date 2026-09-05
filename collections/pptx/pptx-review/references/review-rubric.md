@@ -28,6 +28,7 @@
 | MARGIN_DRIFT | 重要 | 内容の左端が多数派の揃え線から 0.15in 以上ずれている |
 | BODY_SIZE_DRIFT | 重要 | 本文の主たるサイズが型スケールから3pt以内で外れている（明確に違うサイズは密度の設計判断として見ない） |
 | FORM_FAMILY_MONOTONE | 重要 | 同じ形式ファミリーが本文の半分を超える。主役が回っていない |
+| DECORATION_REPEATED | 重要 | 本文領域の同じ位置に飾り（罫線・帯）が過半数のページで繰り返されている |
 | PALETTE_DRIFT | 重要 | 既存の文字色に近いが違う文字色を使っている（面・線の色差は設計判断として見ない） |
 | CHART_NEGATIVE_RENDER | 重要 | 負の値の棒に invertIfNegative が無い。PowerPoint 以外のビューアで負の棒が上向きに見える |
 | ACCENT_LINE_UNDER_TITLE | 重要 | タイトル直下の飾り線 |

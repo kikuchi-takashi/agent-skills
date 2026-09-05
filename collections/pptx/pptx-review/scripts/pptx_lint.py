@@ -143,7 +143,8 @@ class TextMeasurer(object):
             return font.getlength(text) / 4.0
         except Exception:
             return text_width_pt(text, size)
-FOOTER_PREFIXES = ("出典", "Source", "※", "注", "問い合わせ", "連絡先", "Contact", "©", "Confidential", "機密", "社外秘")
+FOOTER_PREFIXES = ("出典", "Source", "出所", "※", "注", "問い合わせ", "お問い合わせ", "連絡先", "ご連絡先",
+                   "Contact", "©", "(c)", "Confidential", "機密", "社外秘", "参考")
 PLACEHOLDER_RE = re.compile(
     r"lorem|ipsum|\btodo\b|\bxxx+\b|\btbd\b|ダミー|サンプルテキスト|テキストを入力|ここに.{0,8}(入力|記入|挿入)|"
     r"\[insert|\[挿入|click to (add|edit)|要確認",
@@ -755,8 +756,8 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
             if ty + th - 0.15 <= y <= ty + th + 0.6 and w <= cw * 0.7:
                 add("ACCENT_LINE_UNDER_TITLE", "warning", "タイトル直下の飾り線（生成AIらしさの典型）。余白か面で区切る", s)
                 continue
-        if s["filled"] and w >= cw * 0.95 and 0.15 <= h <= 1.5 and (y <= 0.2 or y + h >= ch - 0.2):
-            add("COLOR_BAND", "warning", "スライド上端または下端の全幅色帯。装飾なら削除する", s)
+        if s["filled"] and w >= cw * 0.95 and 0.03 <= h <= 1.5 and (y <= 0.15 or y + h >= ch - 0.15):
+            add("COLOR_BAND", "warning", "スライド上端または下端に接した全幅の帯。装飾なら削除する", s)
             continue
         if s["filled"] and h >= ch * 0.95 and 0.1 <= w <= 1.2 and (x <= 0.2 or x + w >= cw - 0.2):
             add("SIDE_STRIPE", "warning", "側面の縦帯。装飾なら削除する", s)
@@ -868,6 +869,14 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
         for s in shapes if s["box"] is not None
     ))
     deck_state["signatures"].append(signature)
+    for s2 in shapes:
+        if s2["text"] or s2["box"] is None or s2["kind"] not in ("shape", "connector"):
+            continue
+        x, y, w, h = s2["box"]
+        thin = h <= 0.1 or w <= 0.1
+        in_content = 0.15 < y < ch - 1.0          # 端の帯とフッター罫線は対象外
+        if thin and in_content and (w >= 0.8 or h >= 0.8):
+            deck_state["decorations"].append((index, round(y, 1), round(x, 1), round(w, 1), round(h, 2)))
     containers = [s for s in shapes if s["box"] is not None and s["kind"] in ("shape", "picture", "table", "chart")
                   and (s["filled"] or s["kind"] != "shape") and s["box"][2] * s["box"][3] < cw * ch * 0.8]
 
@@ -1047,6 +1056,16 @@ def consistency_findings(report_slides, deck_state):
                 add(r["index"], "BODY_SIZE_DRIFT",
                     "本文が %dpt。型スケールの %dpt に寄せる" % (sz, min(close, key=lambda v: abs(v - sz))))
 
+    # 装飾の反復: 本文領域の同じ位置に繰り返される飾り（罫線・帯）は、内容を運ばない定型
+    body_indexes_all = set(r["index"] for r in body)
+    deco = Counter(d[1:] for d in deck_state.get("decorations", []) if d[0] in body_indexes_all)
+    if deco and len(body) >= 4:
+        (dy, dx, dw, dh), n = deco.most_common(1)[0]
+        if n * 2 > len(body):
+            for index in sorted(d[0] for d in deck_state["decorations"] if d[1:] == (dy, dx, dw, dh)):
+                add(index, "DECORATION_REPEATED",
+                    "本文領域の同じ位置（y=%.1f, 幅%.1f）に飾りが %d/%d ページで繰り返されている。内容を運ばないなら消す" % (dy, dw, n, len(body)))
+
     # 形式ファミリーの偏り: 同じ主役ばかりのデッキを咎める（乖離の裏返し）
     families = Counter(r["family"] for r in body if r["family"])
     if families and len(body) >= 5:
@@ -1189,7 +1208,8 @@ def main(argv=None):
     MEASURER.__init__(font_path if (_ImageFont and font_path) else None)
     canvas = canvas_size(pkg)
     slides = slide_order(pkg)
-    deck_state = {"fonts": set(), "signatures": [], "colors": Counter(), "records": [], "slide_colors": [], "variety": None}
+    deck_state = {"fonts": set(), "signatures": [], "colors": Counter(), "records": [], "slide_colors": [],
+                  "variety": None, "decorations": []}
     report_slides = []
     deck_findings = package_findings(pkg, slides)
     for index, part in enumerate(slides, start=1):

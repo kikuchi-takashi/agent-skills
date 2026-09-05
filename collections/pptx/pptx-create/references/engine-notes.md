@@ -51,6 +51,7 @@ GAP = 0.3                   # 要素間の最小間隔
 # 密度モード。design-lock.md の型スケールに対応する。ブリーフで決めた方を選ぶ。
 #   talk = 講演型（話者が語る。文字は大きく、枚数は多め）
 #   doc  = 資料型（読んで完結する。文字は小さく、枚数は少なめ）
+HERO_SIZE = 84              # 大きな数字の上限。実際のサイズは fit_size() で決める
 MODE = "doc"
 SCALE = {
     "talk": {"cover": 44, "title": 30, "h2": 20, "body": 20, "note": 14, "source": 11},
@@ -68,6 +69,21 @@ def col(start, span):
 def text_height(lines, size, line_spacing=1.4, slack_lines=0.5):
     """行数とサイズから箱の高さ（inch）を返す。半行分の余裕を足す。"""
     return (lines + slack_lines) * size * line_spacing / 72.0
+
+
+def text_width(text, size):
+    """1行で描いたときの幅（pt）の概算。全角は size、半角は 0.55×size。"""
+    import unicodedata
+    return sum(size if unicodedata.east_asian_width(c) in ("W", "F") else size * 0.55 for c in text)
+
+
+def fit_size(text, w, max_size, min_size=32, step=2):
+    """1行で幅 w（inch）に収まる最大サイズを返す。大きな数字のように、
+    長さでサイズが決まる要素に使う。本文には使わない（本文は文字を減らす）。"""
+    size = int(max_size)
+    while size > min_size and text_width(text, size) > w * 72:
+        size -= step
+    return size
 
 
 def spread(n, x, total_w, gap=GAP):
@@ -139,7 +155,7 @@ def skeleton(kind):
         return {"line": (1.8, 2.6, W - 3.6, 2.0)}
     if kind == "hero-number":
         left, right = split((5, 7))
-        num_h = text_height(1, 84, slack_lines=0)
+        num_h = text_height(1, HERO_SIZE, slack_lines=0)
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "number": (left[0], band_y + 0.3, left[1], num_h),
                 "caption": (left[0], band_y + 0.3 + num_h + 0.3, left[1], 0.5),
@@ -367,7 +383,8 @@ def slide_hero_number(prs, title, number, caption, context, source=None):
     s = blank(prs)
     k = skeleton("hero-number")
     page_title(s, title)
-    text(s, *k["number"], lines=number, size=84, color="accent", bold=True)
+    size = fit_size(number, k["number"][2], HERO_SIZE)   # 長い数字は自動で下げる
+    text(s, *k["number"], lines=number, size=size, color="accent", bold=True)
     text(s, *k["caption"], lines=caption, size=SIZE["body"], color="muted")
     text(s, *k["context"], lines=context, size=SIZE["body"], anchor=MSO_ANCHOR.BOTTOM)
     if source:
@@ -419,6 +436,7 @@ if __name__ == "__main__":
 - **N 個を横に並べるときは `spread()` で幅を計算する。** 固定幅を N 回置くと、N が増えたときに右端が溢れる。
 - **`MODE` は最初に決める。** 講演型と資料型でサイズが違う。途中で変えると型スケールが混ざる。lint の `--mode` にも同じ値を渡す。
 - **縦に積むときは `vstack()`、下端の注記は `bottom_note()`、本文の範囲は `content_band()`。** 手で y を置くと、文言が1行増えた瞬間に重なる。`vstack()` は収まらないと例外を出すので、黙って重ならない。
+- **大きな数字は `fit_size()` でサイズを決める。** 「1,200万円」のように長い数字は 84pt では収まらない。本文には使わない（本文が収まらないときは文字を減らす）。
 - **プレースホルダのレイアウトを使うと、テーマ由来の書式が混ざる。** 新規作成は白紙レイアウト（index 6）に textbox と shape で組む。テンプレを使うときだけレイアウトのプレースホルダを使う。
 - **既定の図形には影と枠線がつく。** `shape.shadow.inherit = False`、`shape.line.fill.background()` を毎回呼ぶ。
 - **textbox には内側の余白がある（既定 0.1in / 0.05in）。** 罫線や図形と端をそろえるなら余白を 0 にする。
