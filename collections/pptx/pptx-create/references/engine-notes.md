@@ -25,11 +25,12 @@
 
 ```python
 import json
+import math
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
-from pptx.enum.shapes import MSO_SHAPE
+from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION, XL_TICK_LABEL_POSITION
 from pptx.oxml.ns import qn
@@ -124,7 +125,8 @@ def skeleton(kind):
     """ページ構造の名前 → 領域の辞書。レイアウトは archetype から選ぶ（手置きしない）。
 
     使える kind: cover / divider / claim-evidence / split-asymmetric / comparison /
-                 statement / hero-number / table / steps / closing
+                 statement / hero-number / trend / structure / roadmap / before-after /
+                 metrics / table / steps / closing / appendix / photo-full / photo-half
     """
     band_x, band_y, band_w, band_h = content_band()
     if kind == "cover":
@@ -159,6 +161,50 @@ def skeleton(kind):
                 "number": (left[0], band_y + 0.3, left[1], num_h),
                 "caption": (left[0], band_y + 0.3 + num_h + 0.3, left[1], 0.5),
                 "context": (right[0], band_y + 0.3, right[1], num_h),
+                "source": (M, FOOT_Y, 9.0, 0.35)}
+    if kind == "trend":                      # 推移: 図を大きく、読み取りを下に敷く
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "exhibit": (band_x, band_y, band_w, band_h - 1.4),
+                "reading": (band_x, band_y + band_h - 1.2, band_w, 0.9),
+                "source": (M, FOOT_Y, 9.0, 0.35)}
+    if kind == "structure":                  # 構造: 2×2 や樹形。軸ラベルは外側に置く
+        cols = split((1, 1), x=band_x + 1.2, total_w=band_w - 1.2, gap=0.3)
+        rows_y = vstack([(band_h - 0.9) / 2] * 2, top=band_y, bottom=band_y + band_h - 0.5, gap=0.3)
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "cells": [(cx, ry, cw_, (band_h - 0.9) / 2) for ry in rows_y for cx, cw_ in cols],
+                "y_axis": (band_x, band_y, 1.0, band_h - 0.5),
+                "x_axis": (band_x + 1.2, band_y + band_h - 0.4, band_w - 1.2, 0.4),
+                "source": (M, FOOT_Y, 9.0, 0.35)}
+    if kind == "photo-full":                 # 写真を全面に敷き、下half に薄い面と文字
+        return {"photo": bleed("top", 1.0),
+                "scrim": (0, H * 0.55, W, H * 0.45),
+                "line": (0.8, H * 0.62, W - 3.0, text_height(2, SIZE["cover"])),
+                "caption": (0.8, H - 0.9, W - 1.6, 0.4)}
+    if kind == "photo-half":                 # 片側に写真、反対側に文字
+        left, right = split((5, 7))
+        return {"title": (M, TITLE_Y, left[1] + right[0] - M - 0.3, TITLE_H),
+                "reading": (left[0], band_y, left[1], band_h),
+                "photo": (right[0], band_y, right[1], band_h),
+                "source": (M, FOOT_Y, 9.0, 0.35)}
+    if kind == "appendix":                   # 付録: 本編と同じ版面。印はフッター行の右端に置く
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "body": (band_x, band_y, band_w, band_h),
+                "source": (M, FOOT_Y, 9.0, 0.35),
+                "marker": (W - M - 1.5, FOOT_Y, 1.5, 0.35)}
+    if kind == "roadmap":                    # 時系列: 帯を上に、補足を下に
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "band": (band_x, band_y + 0.3, band_w, 2.4),
+                "note": (band_x, band_y + 3.2, band_w, 1.2),
+                "source": (M, FOOT_Y, 9.0, 0.35)}
+    if kind == "before-after":               # 対比: 左右と、下に読み取り
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "pair": (band_x, band_y, band_w, band_h - 1.4),
+                "reading": (band_x, band_y + band_h - 1.2, band_w, 0.9),
+                "source": (M, FOOT_Y, 9.0, 0.35)}
+    if kind == "metrics":                    # KPI: 数字を横に並べ、下に文脈
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "row": (band_x, band_y + 0.4, band_w, 2.0),
+                "context": (band_x, band_y + 3.0, band_w, 1.6),
                 "source": (M, FOOT_Y, 9.0, 0.35)}
     if kind == "table":
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
@@ -228,11 +274,16 @@ def text(slide, x, y, w, h, lines, size, color="text", bold=False,
         run.text = line
         set_font(run, size, color, bold)
         if bullets:
+            # 行頭が全角空白なら第2階層として一段下げる
+            level = 1 if line.startswith("\u3000") else 0
+            if level:
+                run.text = line.lstrip("\u3000")
             ppr = p._p.get_or_add_pPr()
-            ppr.set("marL", str(int(Inches(0.3))))
+            ppr.set("lvl", str(level))
+            ppr.set("marL", str(int(Inches(0.3 + 0.35 * level))))
             ppr.set("indent", str(-int(Inches(0.3))))
             bu = etree.SubElement(ppr, qn("a:buChar"))
-            bu.set("char", "・")
+            bu.set("char", "・" if level == 0 else "–")
     return box
 
 
@@ -247,13 +298,25 @@ def rect(slide, x, y, w, h, fill, rounded=False):
     return shape
 
 
-def bar_chart(slide, x, y, w, h, categories, series, fmt="0.0"):
-    """ネイティブの縦棒。series は [(名前, 値の列), ...]。主系列だけ主色。"""
+CHART_KINDS = {                            # 用途 → PowerPoint のネイティブ図表
+    "bar": XL_CHART_TYPE.COLUMN_CLUSTERED,      # 量の比較
+    "bar_stacked": XL_CHART_TYPE.COLUMN_STACKED,  # 内訳つきの比較
+    "line": XL_CHART_TYPE.LINE_MARKERS,         # 時間による変化（3時点以上）
+    "area": XL_CHART_TYPE.AREA,                 # 積み上がる変化
+    "pie": XL_CHART_TYPE.PIE,                   # 全体に対する割合（系列1つ、5区分まで）
+    "doughnut": XL_CHART_TYPE.DOUGHNUT,         # 同上。中央に数字を置きたいとき
+    "bar_h": XL_CHART_TYPE.BAR_CLUSTERED,       # 項目名が長い比較
+}
+
+
+def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0"):
+    """ネイティブ図表。kind は CHART_KINDS の名前。series は [(名前, 値の列), ...]。
+    伝えたいことで選ぶ: 比較=bar、変化=line、割合=pie、項目名が長い=bar_h。"""
     data = CategoryChartData()
     data.categories = categories
     for name, values in series:
         data.add_series(name, values)
-    chart = slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED,
+    chart = slide.shapes.add_chart(CHART_KINDS[kind],
                                    Inches(x), Inches(y), Inches(w), Inches(h), data).chart
     chart.has_title = False
     chart.has_legend = len(series) > 1
@@ -263,24 +326,282 @@ def bar_chart(slide, x, y, w, h, categories, series, fmt="0.0"):
         if latin is not None and rpr.find(qn("a:ea")) is None:
             ea = etree.SubElement(rpr, qn("a:ea")); latin.addnext(ea); ea.set("typeface", FONT)
     plot = chart.plots[0]
-    plot.gap_width = 80
+    circular = kind in ("pie", "doughnut")
+    if not circular:
+        plot.gap_width = 80
     plot.has_data_labels = True
-    plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
+    plot.data_labels.position = (XL_LABEL_POSITION.OUTSIDE_END if kind in ("bar", "bar_h")
+                                 else XL_LABEL_POSITION.CENTER if kind == "pie"
+                                 else XL_LABEL_POSITION.ABOVE if kind == "line" else None) or plot.data_labels.position
     plot.data_labels.number_format, plot.data_labels.number_format_is_linked = fmt, False
-    va, ca = chart.value_axis, chart.category_axis
-    va.major_gridlines.format.line.color.rgb = RGBColor.from_string(C["line"])
-    va.format.line.fill.background()
-    va.tick_labels.font.color.rgb = RGBColor.from_string(C["muted"])
-    ca.format.line.color.rgb = RGBColor.from_string(C["line"])
-    has_negative = any(v < 0 for _, values in series for v in values)
-    if has_negative:
-        ca.tick_label_position = XL_TICK_LABEL_POSITION.LOW     # 負の棒に項目名が重ならない
+    if not circular:
+        va, ca = chart.value_axis, chart.category_axis
+        va.major_gridlines.format.line.color.rgb = RGBColor.from_string(C["line"])
+        va.format.line.fill.background()
+        va.tick_labels.font.color.rgb = RGBColor.from_string(C["muted"])
+        ca.format.line.color.rgb = RGBColor.from_string(C["line"])
+        if any(v < 0 for _, values in series for v in values):
+            ca.tick_label_position = XL_TICK_LABEL_POSITION.LOW   # 負の棒に項目名が重ならない
+    palette = ["primary", "accent", "muted", "line"]
     for i, ser in enumerate(plot.series):
-        ser.format.fill.solid()
-        ser.format.fill.fore_color.rgb = RGBColor.from_string(C["primary" if i == 0 else "line"])
-        inv = etree.SubElement(ser._element, qn("c:invertIfNegative")); inv.set("val", "0")
-        ser._element.find(qn("c:cat")).addprevious(inv)           # 無いと PowerPoint 以外のビューアで負の棒が上向きに出ることがある
+        if circular:                        # 円は区分ごとに色を変える
+            for j, point in enumerate(ser.points):
+                point.format.fill.solid()
+                point.format.fill.fore_color.rgb = RGBColor.from_string(C[palette[j % len(palette)]])
+        elif kind in ("line", "area"):
+            ser.format.line.color.rgb = RGBColor.from_string(C["primary" if i == 0 else "line"])
+            ser.format.line.width = Pt(2.5)
+        else:
+            ser.format.fill.solid()
+            ser.format.fill.fore_color.rgb = RGBColor.from_string(C["primary" if i == 0 else "line"])
+        if kind in ("bar", "bar_h", "bar_stacked"):
+            inv = etree.SubElement(ser._element, qn("c:invertIfNegative")); inv.set("val", "0")
+            ser._element.find(qn("c:cat")).addprevious(inv)       # 無いと PowerPoint 以外のビューアで負の棒が上向きに出ることがある
     return chart
+
+
+def bar_chart(slide, x, y, w, h, categories, series, fmt="0.0"):
+    """縦棒。chart(..., kind="bar") と同じ。"""
+    return chart(slide, x, y, w, h, categories, series, kind="bar", fmt=fmt)
+
+
+def picture(slide, path, x, y, w, h, fit="cover"):
+    """枠に合わせて画像を置く。fit="cover" は枠を埋めて余りを切り落とし、
+    "contain" は全体を見せて枠内に収める。縦横比は保つ。"""
+    from PIL import Image
+    with Image.open(path) as img:
+        iw, ih = img.size
+    box_ratio, img_ratio = w / h, iw / float(ih)
+    pic = slide.shapes.add_picture(path, Inches(x), Inches(y), Inches(w), Inches(h))
+    if fit == "cover":                      # 枠を埋め、はみ出す側を切る
+        if img_ratio > box_ratio:
+            cut = (1 - box_ratio / img_ratio) / 2
+            pic.crop_left = pic.crop_right = cut
+        else:
+            cut = (1 - img_ratio / box_ratio) / 2
+            pic.crop_top = pic.crop_bottom = cut
+    else:                                   # 全体を見せ、枠の中で中央に置く
+        if img_ratio > box_ratio:
+            nh = w / img_ratio
+            pic.height, pic.top = Inches(nh), Inches(y + (h - nh) / 2)
+        else:
+            nw = h * img_ratio
+            pic.width, pic.left = Inches(nw), Inches(x + (w - nw) / 2)
+    return pic
+
+
+def scrim(slide, x, y, w, h, color="primary", transparency=45):
+    """画像の上に文字を置くための薄い面。地と文字のコントラストを確保する。
+    画像に直接文字を重ねると読めなくなるので、必ず挟む。"""
+    shape = rect(slide, x, y, w, h, color)
+    fill = shape.fill.fore_color._xFill.find(qn("a:srgbClr"))
+    if fill is not None:
+        alpha = etree.SubElement(fill, qn("a:alpha"))
+        alpha.set("val", str(int((100 - transparency) * 1000)))
+    shape.shadow.inherit = False
+    return shape
+
+
+# --- 図形の中の文字と、図形をつなぐ線 ---
+
+def box_text(slide, x, y, w, h, lines, size=None, fill="panel", color="text",
+             bold=False, align=PP_ALIGN.LEFT, pad=0.2, min_size=10, rounded=False):
+    """文字の入った四角。**図形に直接文字を書かない**。この関数を使う。
+
+    自分で `shape.text_frame.text = ...` と書くと、書体・サイズ・和文書体・
+    余白・縦位置がすべて PowerPoint の既定になり、環境ごとに崩れる。
+    ここでは枠に収まるサイズを選び、上下中央に置き、和文書体まで指定する。
+    """
+    size = size or SIZE["body"]
+    shape = rect(slide, x, y, w, h, fill, rounded=rounded)
+    frame = shape.text_frame
+    frame.word_wrap = True
+    frame.auto_size = MSO_AUTO_SIZE.NONE
+    frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+    frame.margin_left = frame.margin_right = Inches(pad)
+    frame.margin_top = frame.margin_bottom = Inches(pad * 0.5)
+    rows = lines if isinstance(lines, list) else [lines]
+    inner_w, inner_h = (w - pad * 2) * 72, (h - pad) * 72
+    while size > min_size:                       # 枠に収まる最大サイズを選ぶ
+        need = 0
+        for row in rows:
+            wrapped = max(1, int(math.ceil(text_width(row, size) / inner_w)))
+            need += wrapped * size * 1.4
+        if need <= inner_h:
+            break
+        size -= 1
+    for i, row in enumerate(rows):
+        para = frame.paragraphs[0] if i == 0 else frame.add_paragraph()
+        para.alignment = align
+        para.line_spacing = 1.4
+        run = para.add_run()
+        run.text = row
+        set_font(run, size, color, bold)
+    return shape
+
+
+def _edge_point(shape, side):
+    x, y = shape.left / 914400.0, shape.top / 914400.0
+    w, h = shape.width / 914400.0, shape.height / 914400.0
+    return {"left": (x, y + h / 2), "right": (x + w, y + h / 2),
+            "top": (x + w / 2, y), "bottom": (x + w / 2, y + h)}[side]
+
+
+def connect(slide, a, b, color="line", width_pt=1.5, arrow=True):
+    """2つの図形を線で結ぶ。向かい合う辺を自動で選び、ずれていれば直角に折る。
+
+    端点は必ず図形の辺に接する。斜めに空間を横切る線は作らない。
+    """
+    ax, ay = a.left / 914400.0, a.top / 914400.0
+    aw, ah = a.width / 914400.0, a.height / 914400.0
+    bx, by = b.left / 914400.0, b.top / 914400.0
+    bw, bh = b.width / 914400.0, b.height / 914400.0
+    dx, dy = (bx + bw / 2) - (ax + aw / 2), (by + bh / 2) - (ay + ah / 2)
+    if abs(dx) >= abs(dy):                       # 横に並んでいる
+        start = _edge_point(a, "right" if dx > 0 else "left")
+        end = _edge_point(b, "left" if dx > 0 else "right")
+        aligned = abs(dy) < 0.15
+    else:                                        # 縦に並んでいる
+        start = _edge_point(a, "bottom" if dy > 0 else "top")
+        end = _edge_point(b, "top" if dy > 0 else "bottom")
+        aligned = abs(dx) < 0.15
+    kind = MSO_CONNECTOR.STRAIGHT if aligned else MSO_CONNECTOR.ELBOW
+    conn = slide.shapes.add_connector(kind, Inches(start[0]), Inches(start[1]),
+                                      Inches(end[0]), Inches(end[1]))
+    conn.line.color.rgb = RGBColor.from_string(C[color])
+    conn.line.width = Pt(width_pt)
+    if arrow:                                    # 終端に矢じりを付ける
+        ln = conn.line._get_or_add_ln()
+        tail = etree.SubElement(ln, qn("a:tailEnd"))
+        tail.set("type", "triangle"); tail.set("w", "med"); tail.set("len", "med")
+    return conn
+
+
+# --- 部品（ページの中に置く。原型と組み合わせて使う） ---
+
+def table(slide, x, y, w, rows, col_ratio=None, row_h=0.45, right_align_from=1):
+    """罫線は横だけ、見出し行は淡い面。数字の列は右揃え。
+    rows は [[見出し...], [値...], ...]。6行×5列までに収める。"""
+    n_rows, n_cols = len(rows), len(rows[0])
+    frame = slide.shapes.add_table(n_rows, n_cols, Inches(x), Inches(y),
+                                   Inches(w), Inches(row_h * n_rows))
+    tbl = frame.table
+    tbl.first_row = False
+    tbl.horz_banding = False
+    ratio = col_ratio or [1] * n_cols
+    for j, r in enumerate(ratio):
+        tbl.columns[j].width = Inches(w * r / float(sum(ratio)))
+    for i, row in enumerate(rows):
+        for j, value in enumerate(row):
+            cell = tbl.cell(i, j)
+            cell.margin_left = cell.margin_right = Inches(0.08)
+            cell.margin_top = cell.margin_bottom = Inches(0.04)
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = RGBColor.from_string(C["panel"] if i == 0 else C["bg"])
+            para = cell.text_frame.paragraphs[0]
+            para.alignment = PP_ALIGN.RIGHT if j >= right_align_from else PP_ALIGN.LEFT
+            run = para.add_run()
+            run.text = str(value)
+            set_font(run, SIZE["body"] if i else SIZE["note"], "text" if i else "muted", bold=(i == 0))
+            tc_pr = cell._tc.get_or_add_tcPr()
+            for tag in ("a:lnL", "a:lnR", "a:lnT", "a:lnB"):
+                ln = etree.SubElement(tc_pr, qn(tag))
+                if tag == "a:lnB":                       # 横罫線だけ引く
+                    ln.set("w", "6350")
+                    fill = etree.SubElement(ln, qn("a:solidFill"))
+                    etree.SubElement(fill, qn("a:srgbClr")).set("val", C["line"])
+                else:
+                    ln.set("w", "0")
+                    etree.SubElement(ln, qn("a:noFill"))
+    return frame
+
+
+def timeline(slide, x, y, w, milestones, label_size=None):
+    """横一本の時系列。milestones は [(時期, 内容), ...]。5つまで。
+    節目は等間隔に置き、端の札が枠から出ないよう内側に寄せる。"""
+    label_size = label_size or SIZE["note"]
+    n = len(milestones)
+    rect(slide, x, y + 0.55, w, 0.02, "line")
+    inset = w / (n * 2.0)                                # 端の札を内側に寄せる
+    for i, (when, what) in enumerate(milestones):
+        cx = x + inset + (w - inset * 2) * (i / float(max(n - 1, 1)))
+        dot = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(cx - 0.07), Inches(y + 0.49),
+                                     Inches(0.14), Inches(0.14))
+        dot.fill.solid(); dot.fill.fore_color.rgb = RGBColor.from_string(C["accent"])
+        dot.line.fill.background(); dot.shadow.inherit = False
+        col_w = (w - inset * 2) / max(n - 1, 1) * 0.9
+        text(slide, cx - col_w / 2, y, col_w, 0.4, when, label_size, color="muted",
+             align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.BOTTOM)
+        text(slide, cx - col_w / 2, y + 0.8, col_w, text_height(2, SIZE["body"]), what,
+             SIZE["body"], align=PP_ALIGN.CENTER)
+    return y + 0.8 + text_height(2, SIZE["body"])
+
+
+def flow(slide, x, y, w, h, steps, gap=None):
+    """処理の流れ。箱を等分に並べ、間を矢印でつなぐ。5つまで。
+    順序が意味を持つときだけ使う。持たないなら箇条書きにする。"""
+    gap = GAP if gap is None else gap
+    boxes = spread(len(steps), x, w, gap=gap)
+    shapes = []
+    for (bx, bw), step in zip(boxes, steps):
+        head, body = step if isinstance(step, (tuple, list)) else (step, None)
+        rows = [head] + ([body] if body else [])
+        shape = box_text(slide, bx, y, bw, h, rows, size=SIZE["body"], align=PP_ALIGN.LEFT)
+        if body:                                 # 見出しだけ太字にする
+            shape.text_frame.paragraphs[0].runs[0].font.bold = True
+        shapes.append(shape)
+    for a, b in zip(shapes, shapes[1:]):
+        connect(slide, a, b)
+    return boxes
+
+
+def metrics(slide, x, y, w, items, size=None):
+    """数字とラベルを横に並べる。3つまで。数字が主張を支えるときだけ使う。
+    items は [(数字, ラベル), ...]。"""
+    size = size or 44
+    cols = spread(len(items), x, w, gap=0.5)
+    num_h = text_height(1, size, slack_lines=0)
+    for (cx, cw_), (value, label) in zip(cols, items):
+        fitted = fit_size(str(value), cw_, size, min_size=24)
+        text(slide, cx, y, cw_, num_h, str(value), fitted, color="accent", bold=True)
+        text(slide, cx, y + num_h + 0.15, cw_, 0.4, label, SIZE["note"], color="muted")
+    return y + num_h + 0.55
+
+
+def quote(slide, x, y, w, body, source=None):
+    """引用・利用者の声。太い縦線ではなく、字下げと書体で引用だと示す。"""
+    text(slide, x, y, w, text_height(3, SIZE["h2"]), body, SIZE["h2"])
+    if source:
+        text(slide, x, y + text_height(3, SIZE["h2"]), w, 0.4, source, SIZE["note"], color="muted")
+    return y + text_height(3, SIZE["h2"]) + 0.5
+
+
+def before_after(slide, x, y, w, h, before, after, labels=("導入前", "導入後")):
+    """対比。左右に並べ、間に矢印を置く。before / after は行の列。"""
+    (lx, lw), (rx, rw) = spread(2, x, w, gap=0.8)
+    for (bx, bw), label, lines, tone in (((lx, lw), labels[0], before, "muted"),
+                                         ((rx, rw), labels[1], after, "text")):
+        text(slide, bx, y, bw, 0.4, label, SIZE["note"], color="muted")
+        rect(slide, bx, y + 0.5, bw, h - 0.5, "panel")
+        text(slide, bx + 0.25, y + 0.75, bw - 0.5, h - 1.0, lines, SIZE["body"], color=tone)
+    arrow = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, Inches(lx + lw + 0.15),
+                                   Inches(y + h / 2), Inches(0.5), Inches(0.2))
+    arrow.fill.solid(); arrow.fill.fore_color.rgb = RGBColor.from_string(C["accent"])
+    arrow.line.fill.background(); arrow.shadow.inherit = False
+    return y + h + 0.5
+
+
+def chrome(slide, page=None, total=None, section=None, logo=None):
+    """全ページ共通の細部。ページ番号・章の進行表示・ロゴを定位置に置く。
+    静かな層なので、位置と大きさを全ページで変えない。"""
+    if section:
+        text(slide, M, FOOT_Y, 6.0, 0.35, section, SIZE["source"], color="muted")
+    if page is not None:
+        label = "%d / %d" % (page, total) if total else str(page)
+        text(slide, W - M - 1.2, FOOT_Y, 1.2, 0.35, label, SIZE["source"],
+             color="muted", align=PP_ALIGN.RIGHT)
+    if logo:
+        picture(slide, logo, W - M - 1.2, 0.35, 1.2, 0.4, fit="contain")
 
 
 def notes(slide, body):
@@ -403,6 +724,126 @@ def slide_steps(prs, title, steps):
     return s
 
 
+def slide_table(prs, title, rows, reading=None, col_ratio=None, source=None):
+    """表。精密な値を照合させるときに使う。傾向を見せたいなら図にする。"""
+    s = blank(prs)
+    k = skeleton("table")
+    page_title(s, title)
+    table(s, k["table"][0], k["table"][1], k["table"][2], rows, col_ratio=col_ratio)
+    if reading:
+        text(s, *k["reading"], lines=reading, size=SIZE["body"])
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_trend(prs, title, categories, series, reading, source=None, kind="line"):
+    """推移。時点が3つ以上あるときに使う。2つなら比較にする。"""
+    s = blank(prs)
+    k = skeleton("trend")
+    page_title(s, title)
+    chart(s, *k["exhibit"], categories=categories, series=series, kind=kind)
+    text(s, *k["reading"], lines=reading, size=SIZE["body"])
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_structure(prs, title, cells, axes=None, source=None):
+    """構造。2×2 の4象限。cells は [(見出し, 説明), ...] を4つ。
+    axes は (縦軸ラベル, 横軸ラベル)。関係が本当にあるときだけ使う。"""
+    s = blank(prs)
+    k = skeleton("structure")
+    page_title(s, title)
+    for (cx, cy, cw_, chh), (head, desc) in zip(k["cells"], cells):
+        rect(s, cx, cy, cw_, chh, "panel")
+        text(s, cx + 0.25, cy + 0.2, cw_ - 0.5, 0.4, head, SIZE["h2"], bold=True)
+        text(s, cx + 0.25, cy + 0.75, cw_ - 0.5, chh - 1.0, desc, SIZE["body"])
+    if axes:
+        text(s, *k["y_axis"], lines=axes[0], size=SIZE["note"], color="muted",
+             align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+        text(s, *k["x_axis"], lines=axes[1], size=SIZE["note"], color="muted", align=PP_ALIGN.CENTER)
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_photo_full(prs, image, line, caption=None):
+    """写真を全面に敷き、下半分に薄い面を挟んで文字を置く。
+    薄い面を省くと文字が読めなくなるので必ず入れる。"""
+    s = blank(prs)
+    k = skeleton("photo-full")
+    picture(s, image, *k["photo"], fit="cover")
+    scrim(s, *k["scrim"])
+    text(s, *k["line"], lines=line, size=SIZE["cover"], color="bg", bold=True)
+    if caption:
+        text(s, *k["caption"], lines=caption, size=SIZE["note"], color="line")
+    return s
+
+
+def slide_photo_half(prs, title, reading, image, source=None):
+    """片側に写真、反対側に文字。写真は枠を埋めて切り落とす。"""
+    s = blank(prs)
+    k = skeleton("photo-half")
+    page_title(s, title)
+    text(s, *k["reading"], lines=reading, size=SIZE["body"])
+    picture(s, image, *k["photo"], fit="cover")
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_appendix(prs, title, body, source=None):
+    """付録。結論の後ろに置く。本編と同じロックを使う。"""
+    s = blank(prs)
+    k = skeleton("appendix")
+    text(s, *k["title"], lines=title, size=SIZE["title"], bold=True)
+    text(s, *k["marker"], lines="付録", size=SIZE["note"], color="muted", align=PP_ALIGN.RIGHT)
+    text(s, *k["body"], lines=body, size=SIZE["body"])
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_roadmap(prs, title, milestones, note=None, source=None):
+    """時系列。工程やロードマップ。節目は5つまで。"""
+    s = blank(prs)
+    k = skeleton("roadmap")
+    page_title(s, title)
+    timeline(s, k["band"][0], k["band"][1], k["band"][2], milestones)
+    if note:
+        text(s, *k["note"], lines=note, size=SIZE["body"])
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_before_after(prs, title, before, after, reading=None, labels=("導入前", "導入後"), source=None):
+    """対比。変化そのものが主張のときに使う。"""
+    s = blank(prs)
+    k = skeleton("before-after")
+    page_title(s, title)
+    before_after(s, *k["pair"], before=before, after=after, labels=labels)
+    if reading:
+        text(s, *k["reading"], lines=reading, size=SIZE["body"])
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_metrics(prs, title, items, context=None, source=None):
+    """KPI を横に並べる。3つまで。数字が主張を支えるときだけ。"""
+    s = blank(prs)
+    k = skeleton("metrics")
+    page_title(s, title)
+    metrics(s, k["row"][0], k["row"][1], k["row"][2], items)
+    if context:
+        text(s, *k["context"], lines=context, size=SIZE["body"])
+    if source:
+        page_source(s, source)
+    return s
+
+
 def slide_closing(prs, title, asks, risks=None, contact=None):
     """結論・依頼。質疑の間これが画面に残る。"""
     s = blank(prs)
@@ -436,6 +877,8 @@ if __name__ == "__main__":
 - **`MODE` は最初に決める。** 講演型と資料型でサイズが違う。途中で変えると型スケールが混ざる。lint の `--mode` にも同じ値を渡す。
 - **縦に積むときは `vstack()`、下端の注記は `bottom_note()`、本文の範囲は `content_band()`。** 手で y を置くと、文言が1行増えた瞬間に重なる。`vstack()` は収まらないと例外を出すので、黙って重ならない。
 - **大きな数字は `fit_size()` でサイズを決める。** 「1,200万円」のように長い数字は 84pt では収まらない。本文には使わない（本文が収まらないときは文字を減らす）。
+- **図形に文字を入れるときは `box_text()` を使う。** `shape.text_frame.text = "..."` と直接書くと、書体・サイズ・和文書体・余白・縦位置がすべて PowerPoint の既定になり、受け手の環境で崩れる。文字は上に貼り付き、和文は代替書体になる。`box_text()` は枠に収まるサイズを選び、上下中央に置き、和文書体まで指定する。
+- **図形を線で結ぶときは `connect()` を使う。** `add_connector` を座標で直接呼ぶと、端点が辺からずれ、段違いのときに斜め線が空間を横切る。`connect()` は向かい合う辺を自動で選び、ずれていれば直角に折り、端点を必ず辺に接させる。
 - **プレースホルダのレイアウトを使うと、テーマ由来の書式が混ざる。** 新規作成は白紙レイアウト（index 6）に textbox と shape で組む。テンプレを使うときだけレイアウトのプレースホルダを使う。
 - **既定の図形には影と枠線がつく。** `shape.shadow.inherit = False`、`shape.line.fill.background()` を毎回呼ぶ。
 - **textbox には内側の余白がある（既定 0.1in / 0.05in）。** 罫線や図形と端をそろえるなら余白を 0 にする。

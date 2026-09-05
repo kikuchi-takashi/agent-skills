@@ -29,6 +29,9 @@
 | BODY_SIZE_DRIFT | 重要 | 本文の主たるサイズが型スケールから3pt以内で外れている（明確に違うサイズは密度の設計判断として見ない） |
 | FORM_FAMILY_MONOTONE | 重要 | 同じ形式ファミリーが本文の半分を超える。主役が回っていない |
 | DECORATION_REPEATED | 重要 | 本文領域の同じ位置に飾り（罫線・帯）が過半数のページで繰り返されている |
+| SHAPE_TEXT_UNSTYLED | 重要 | 図形の中の文字に書体かサイズの指定が無い。受け手の環境の既定になって崩れる |
+| CONNECTOR_DETACHED | 重要 | 線の端点が図形に接していない |
+| CONNECTOR_DIAGONAL | 重要 | 斜めの直線で図形を結んでいる。段がずれているなら直角に折る |
 | PALETTE_DRIFT | 重要 | 既存の文字色に近いが違う文字色を使っている（面・線の色差は設計判断として見ない） |
 | CHART_NEGATIVE_RENDER | 重要 | 負の値の棒に invertIfNegative が無い。PowerPoint 以外のビューアで負の棒が上向きに見える |
 | ACCENT_LINE_UNDER_TITLE | 重要 | タイトル直下の飾り線 |
@@ -53,6 +56,7 @@
 | MISALIGNED | 軽微 | 他の要素が共有する揃え線から 0.03〜0.15in ずれた端 |
 | CORNER_MIX | 軽微 | 角丸と直角の塗り面が同じページに混在 |
 | AUTOFIT_SHRINK | 軽微 | 自動縮小で収める設定。縮小後のサイズは FONT_TOO_SMALL で別途判定 |
+| SHAPE_TEXT_TOP_ANCHORED | 軽微 | 図形の中の文字が上に貼り付いている。余りがあるなら上下中央に |
 | DEAD_WHITESPACE | 軽微 | 本文領域の 55% 超が空いている。下や右に偏った空白なら見直す |
 
 推定に基づくコード（OVERFLOW 系）は、画像で確認してから重大度を確定する。要約の `measured` は実フォントで折り返しを測った結果、`estimated` は文字幅の概算である。lint は placeholder の継承位置を近似しており、テンプレ由来のスライドでは位置が取れない要素がある。`design-lock.json` の `allow` で登録された指摘は判定から外れる。

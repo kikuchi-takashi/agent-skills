@@ -552,9 +552,11 @@ def collect_shapes(pkg, part, layout_pos, master_pos):
             tx_body = el.find(q("p", "txBody"))
             paras = paragraphs(tx_body)
             text = "\n".join(p["text"] for p in paras).strip()
+            cnv_sp = el.find(q("p", "nvSpPr") + "/" + q("p", "cNvSpPr"))
             shapes.append({
                 "el": el,
                 "kind": kind,
+                "is_textbox": cnv_sp is not None and cnv_sp.get("txBox") == "1",
                 "name": name_el.get("name") if name_el is not None else "",
                 "id": name_el.get("id") if name_el is not None else "",
                 "box": box,
@@ -727,7 +729,11 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
                 continue
             smallest = min(para["sizes"]) * scale
             text = para["text"].strip()
-            is_source = text.startswith(FOOTER_PREFIXES) or text.replace("/", "").replace(" ", "").isdigit()
+            # フッター帯にある小さな文字は、出典・章表示・ページ番号などの細部として扱う
+            in_footer = s["box"] is not None and s["box"][1] >= ch - 0.9
+            is_source = (text.startswith(FOOTER_PREFIXES)
+                         or text.replace("/", "").replace(" ", "").isdigit()
+                         or (in_footer and smallest <= 11.5))
             floor = 9.0 if is_source else min_font
             if smallest < floor:
                 add("FONT_TOO_SMALL", "error", "%.1fpt は下限 %.0fpt 未満: 「%s」" % (smallest, floor, text[:30]), s)
@@ -793,7 +799,12 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
     for s in shapes:
         if s["kind"] == "picture" and s["box"] is not None:
             if s["box"][2] * s["box"][3] >= cw * ch * 0.85:
-                add("FULL_PAGE_PICTURE", "warning", "ページの85%以上を1枚の画像が占める。文字や図表が画像化されていれば編集できない", s)
+                # 画像の上にネイティブの文字が載っていれば、裁ち落としの設計であって
+                # 「ページごと画像化した」ではない
+                over = sum(1 for t in text_shapes if overlap_area(t["box"], s["box"]) > t["box"][2] * t["box"][3] * 0.5)
+                if not over:
+                    add("FULL_PAGE_PICTURE", "warning",
+                        "ページの85%以上を1枚の画像が占め、その上にネイティブの文字が無い。ページごと画像化していないか確認する", s)
 
     # 整列のずれ（共有されている端から 0.03〜0.15in 外れた端）
     boxed = [s for s in shapes if s["box"] is not None and not (s["box"][2] >= cw * 0.95 and s["box"][3] >= ch * 0.95)]
@@ -840,6 +851,52 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
             if inter / t_area > 0.05 and inter / t_area < 0.9:
                 add("TEXT_SHAPE_COLLISION", "warning", "テキスト「%s」が %s（%s）と部分的に重なっている" % (t["text"][:20], f["name"] or f["id"], f["kind"]), t)
                 break
+
+    # 図形の中の文字: 書体とサイズが未指定だと、受け手の環境の既定になって崩れる
+    for s in shapes:
+        if s["kind"] != "shape" or not s["text"]:
+            continue
+        has_size = any(p["sizes"] for p in s["paragraphs"])
+        has_font = any(f for p in s["paragraphs"] for f in p["fonts"] if not THEME_FONT_RE.match(f))
+        if not has_size or not has_font:
+            missing = " と ".join(x for x, ok in (("サイズ", has_size), ("書体", has_font)) if not ok)
+            where = "テキストボックス" if s.get("is_textbox") else "図形"
+            add("SHAPE_TEXT_UNSTYLED", "warning",
+                "%sの中の文字に%sの指定が無い。受け手の環境の既定になって崩れる" % (where, missing), s)
+        if s.get("is_textbox"):
+            continue                              # 枠の無いテキストボックスは上寄せが普通
+        anchor = s["body_pr"].get("anchor", "t") if s["body_pr"] is not None else "t"
+        biggest = max((max(p["sizes"]) for p in s["paragraphs"] if p["sizes"]), default=0)
+        if anchor == "t" and biggest and s["box"][3] > biggest * 1.4 / 72.0 * 2.2:
+            add("SHAPE_TEXT_TOP_ANCHORED", "info",
+                "図形の中の文字が上に貼り付いている。枠の高さに余りがあるなら上下中央に置く", s)
+
+    # コネクタ: 端点が図形の辺に接しているか、斜めに空間を横切っていないか
+    connect_targets = [s for s in shapes if s["box"] is not None and s["kind"] in ("shape", "picture", "table", "chart")
+                       and not (s["box"][2] >= cw * 0.95 and s["box"][3] >= ch * 0.95)]
+    for s in shapes:
+        if s["kind"] != "connector" or s["box"] is None:
+            continue
+        x, y, w, h = s["box"]
+        xfrm = s["el"].find(".//" + q("a", "xfrm"))
+        flip_h = xfrm is not None and xfrm.get("flipH") == "1"
+        flip_v = xfrm is not None and xfrm.get("flipV") == "1"
+        p0 = (x + w if flip_h else x, y + h if flip_v else y)
+        p1 = (x if flip_h else x + w, y if flip_v else y + h)
+        loose = []
+        for point in (p0, p1):
+            near = any(tx - 0.12 <= point[0] <= tx + tw + 0.12 and ty - 0.12 <= point[1] <= ty + th + 0.12
+                       for tx, ty, tw, th in (t["box"] for t in connect_targets))
+            if not near:
+                loose.append(point)
+        if loose:
+            add("CONNECTOR_DETACHED", "warning",
+                "線の端点が図形に接していない（%s）。図形の辺から引く" %
+                ", ".join("x=%.2f y=%.2f" % pt for pt in loose), s)
+        elif (s["geom"] or "").startswith("line") or s["geom"] == "straightConnector1":
+            if abs(w) > 0.25 and abs(h) > 0.25:
+                add("CONNECTOR_DIAGONAL", "warning",
+                    "斜めの直線で図形を結んでいる。段がずれているなら直角に折る", s)
 
     # 角処理の混在
     big_fills = [s for s in boxed if s["kind"] == "shape" and s["filled"] and s["box"][2] >= 1.0 and s["box"][3] >= 0.8]

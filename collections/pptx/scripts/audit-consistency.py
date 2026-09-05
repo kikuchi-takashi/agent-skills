@@ -160,12 +160,36 @@ def check_codes():
         note("lint が出すが監査基準に無いコード: %s" % code)
 
 
+def check_components():
+    """文書が挙げる部品が骨格に実装されているか。"""
+    fns = set(re.findall(r"^def (\w+)", SKELETON, re.M))
+    named = set(re.findall(r"`(table|timeline|flow|metrics|quote|before_after|chrome|picture|scrim)`",
+                           (CREATE / "layout-catalog.md").read_text()))
+    for name in sorted(named - fns):
+        note("layout-catalog.md が挙げる部品 %s が骨格に無い" % name)
+
+
+def check_chart_kinds():
+    """骨格の CHART_KINDS と、文書が挙げる図表の種類が一致するか。"""
+    m = re.search(r"CHART_KINDS = \{(.*?)\}", SKELETON, re.S)
+    if not m:
+        note("骨格に CHART_KINDS が無い")
+        return
+    kinds = set(re.findall(r'"(\w+)":', m.group(1)))
+    for doc in (CREATE / "design-principles.md", CREATE / "layout-catalog.md"):
+        named = set(re.findall(r"`(bar|bar_stacked|bar_h|line|area|pie|doughnut)`", doc.read_text()))
+        for kind in sorted(named - kinds):
+            note("%s が挙げる図表 %s が骨格に無い" % (doc.name, kind))
+
+
 def check_archetypes():
     kinds = set(re.findall(r'if kind == "([\w-]+)"', SKELETON))
     fns = set(re.findall(r"^def slide_(\w+)", SKELETON, re.M))
     for doc in (CREATE / "layout-catalog.md", ROOT / "pptx-create" / "SKILL.md"):
         named = set(re.findall(r"`(cover|divider|claim-evidence|split-asymmetric|comparison|"
-                               r"statement|hero-number|table|steps|closing)`", doc.read_text()))
+                               r"statement|hero-number|trend|structure|photo-full|photo-half|"
+                               r"roadmap|before-after|metrics|table|steps|closing|appendix)`",
+                               doc.read_text()))
         for kind in sorted(named - kinds):
             note("%s が挙げる原型 %s に skeleton() の実装が無い" % (doc.name, kind))
     if not fns:
@@ -181,6 +205,8 @@ def main():
     check_flags()
     check_codes()
     check_archetypes()
+    check_chart_kinds()
+    check_components()
     check_lock_roundtrip(sample)
     print("=== 文書と実装の整合監査 ===")
     for i in issues:

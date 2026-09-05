@@ -297,6 +297,118 @@ def _(g, p):
     g["text"](s, g["M"], g["BODY_Y"], 7.0, 1.4, ["本文の行。"], g["SIZE"]["body"])
 
 
+@case("新しい原型（推移・構造・付録）", forbid=["TITLE_POSITION_DRIFT", "MARGIN_DRIFT",
+                                              "BODY_SIZE_DRIFT", "TEXT_OVERFLOW_LIKELY"])
+def _(g, p):
+    base(g, p)
+    g["slide_trend"](p, "問い合わせ件数は3年連続で増えている",
+                     ["2024年度", "2025年度", "2026年度"], [("件数（千件）", (8.2, 9.1, 10.7))],
+                     ["伸びは年8%で安定している。"], "出典: 集計", kind="line")
+    g["slide_structure"](p, "打ち手は効果と着手のしやすさで4つに分かれる",
+                         [("すぐ効く", "自動応答の導入。"), ("効くが重い", "基幹連携。"),
+                          ("軽いが小さい", "FAQ整備。"), ("後回し", "全面刷新。")],
+                         ("効果 →", "着手のしやすさ →"), "出典: 整理")
+    g["slide_appendix"](p, "算出の前提", ["実績を年換算した。"], "出典: 実績")
+
+
+@case("図表7種がすべて作れる", forbid=["TEXT_OVERFLOW_LIKELY"])
+def _(g, p):
+    base(g, p)
+    for kind in ("bar", "bar_stacked", "line", "area", "pie", "doughnut", "bar_h"):
+        s = g["blank"](p)
+        g["page_title"](s, "図表 %s を主役にしたページの主張" % kind)
+        series = [("系列1", (3.0, 5.0, 4.0))]
+        if kind in ("bar_stacked", "line", "area"):
+            series.append(("系列2", (1.0, 2.0, 1.5)))
+        g["chart"](s, g["M"], g["BODY_Y"], 7.0, 3.5, ["A", "B", "C"], series, kind=kind)
+
+
+@case("新しい原型（工程・対比・指標・表）", forbid=["TITLE_POSITION_DRIFT", "MARGIN_DRIFT",
+                                                  "BODY_SIZE_DRIFT", "TEXT_OVERFLOW_LIKELY",
+                                                  "FONT_TOO_SMALL"])
+def _(g, p):
+    base(g, p)
+    g["slide_roadmap"](p, "10月から12月で段階的に進める",
+                       [("10月", "対象業務の選定"), ("11月", "実機での確認"), ("12月", "導入可否の判断")],
+                       ["各段階の終わりに確認の場を設ける。"], "出典: 計画")
+    g["slide_before_after"](p, "一次対応にかける時間は半分になる",
+                            ["月480時間", "残業 月40時間"], ["月240時間", "残業 月10時間"],
+                            ["削減分は個別対応に回す。"], source="出典: 試算")
+    g["slide_metrics"](p, "3つの指標で効果を測る",
+                       [("40%", "対応時間の削減"), ("290件", "月間の自動応答"), ("1.2か月", "投資回収")],
+                       ["いずれも導入3か月時点の見込みである。"], "出典: 試算")
+    g["slide_table"](p, "選択肢は3つあり、Aが最も早い",
+                     [["案", "費用", "期間"], ["A", "180万円", "3か月"], ["B", "340万円", "6か月"]],
+                     ["費用と期間は比例しない。"], [2, 1, 1], "出典: 試算")
+
+
+@case("部品（流れ・引用・ページ番号）", forbid=["TEXT_OVERFLOW_LIKELY", "FONT_TOO_SMALL",
+                                              "TEXT_SHAPE_COLLISION"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "処理は3段で流れる")
+    g["flow"](s, g["M"], g["BODY_Y"], g["W"] - 2 * g["M"], 1.8,
+              [("受付", "質問を受ける"), ("判定", "定型かを見る"), ("応答", "回答を返す")])
+    g["quote"](s, g["M"], 4.6, 9.0, ["「同じ質問に何度も答えていた」"], "サポート部 担当者")
+    g["chrome"](s, page=6, total=6, section="第2章 打ち手")
+
+
+@case("入れ子の箇条書き", forbid=["TEXT_OVERFLOW_LIKELY"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "対象を3つに絞って進める")
+    g["text"](s, g["M"], g["BODY_Y"], 8.0, 3.0,
+              ["対象を3つに絞る", "\u3000定型の問い合わせ", "\u3000FAQ で答えられるもの", "期限は12月末"],
+              g["SIZE"]["body"], bullets=True)
+
+
+@case("図形に直接文字を書くと咎める", expect=["SHAPE_TEXT_UNSTYLED"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "図形に直接文字を書いたページの主張")
+    shape = g["rect"](s, g["M"], g["BODY_Y"], 3.0, 1.4, "panel")
+    shape.text_frame.text = "受付"
+
+
+@case("box_text なら咎めない", forbid=["SHAPE_TEXT_UNSTYLED", "SHAPE_TEXT_TOP_ANCHORED",
+                                       "TEXT_OVERFLOW_LIKELY"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "文字入りの四角を並べたページの主張")
+    for i, label in enumerate(["受付", "問い合わせ内容を分類して定型かどうかを判定する",
+                               "API /v1/classify で判定"]):
+        g["box_text"](s, g["M"] + i * 4.15, g["BODY_Y"], 3.8, 1.6, label)
+
+
+@case("座標で線を引くと咎める", expect=["CONNECTOR_DIAGONAL"])
+def _(g, p):
+    from pptx.util import Inches
+    from pptx.enum.shapes import MSO_CONNECTOR
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "斜めの線で結んだページの主張")
+    a = g["box_text"](s, g["M"], 2.4, 3.0, 1.2, "受付")
+    b = g["box_text"](s, 5.4, 4.2, 3.0, 1.2, "判定")
+    s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, a.left + a.width, a.top + a.height // 2,
+                           b.left, b.top + b.height // 2)
+
+
+@case("connect なら咎めない", forbid=["CONNECTOR_DIAGONAL", "CONNECTOR_DETACHED"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "図形を線で結んだページの主張")
+    a = g["box_text"](s, g["M"], 2.4, 3.0, 1.2, "受付")
+    b = g["box_text"](s, 5.4, 4.2, 3.0, 1.2, "判定")
+    c = g["box_text"](s, 9.6, 2.4, 3.0, 1.2, "応答")
+    g["connect"](s, a, b)
+    g["connect"](s, b, c)
+
+
 def main():
     workdir = tempfile.mkdtemp(prefix="pptx-eval-")
     deck_dir = os.path.join(workdir, "deck")

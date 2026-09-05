@@ -248,7 +248,18 @@ class Renderer(object):
         if flip_v:
             y0, y1 = y1, y0
         _, line, line_w = self.fill_and_line(el)
-        draw.line([x0, y0, x1, y1], fill=line or (120, 120, 120), width=max(line_w, 1))
+        color, width = line or (120, 120, 120), max(line_w, 1)
+        geom = shape["geom"] or ""
+        if geom.startswith("bentConnector"):      # 折れ線は直角に描く
+            if abs(x1 - x0) >= abs(y1 - y0):      # 横に進んでから縦
+                mid = (x0 + x1) // 2
+                path = [(x0, y0), (mid, y0), (mid, y1), (x1, y1)]
+            else:                                 # 縦に進んでから横
+                mid = (y0 + y1) // 2
+                path = [(x0, y0), (x0, mid), (x1, mid), (x1, y1)]
+            draw.line(path, fill=color, width=width, joint="curve")
+        else:
+            draw.line([x0, y0, x1, y1], fill=color, width=width)
 
     def box_label(self, draw, box, label):
         x, y, w, h = box
@@ -359,6 +370,10 @@ class Renderer(object):
                             vals.append(0.0)
                     sppr = ser.find(ns + "spPr")
                     color = resolve(L.color_of(sppr), self.theme) if sppr is not None else None
+                    if color is None and sppr is not None:      # 折れ線は線の色を見る
+                        ln = sppr.find(L.q("a", "ln"))
+                        if ln is not None:
+                            color = resolve(L.color_of(ln), self.theme)
                     if color is None:
                         color = hex_rgb(self.theme.get(ACCENT_ORDER[i % 6], "4F81BD"))
                     show_val = ser.find(ns + "dLbls/" + ns + "showVal")
