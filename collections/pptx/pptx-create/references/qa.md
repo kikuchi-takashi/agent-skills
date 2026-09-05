@@ -1,4 +1,4 @@
-# 品質確認 — 3つのゲートと、合格の示し方
+# 品質確認 — 4つのゲートと、合格の示し方
 
 合格は「lint の JSON に `passed: true` があり、全ページの描画画像を見て指摘が無い」ことで示す。どちらか一方では合格にしない。「問題ないはず」「概ね良好」は合格ではない。
 
@@ -69,29 +69,9 @@ subprocess.run([sys.executable, "<skills>/pptx-review/scripts/pptx_lint.py", "de
 
 描画は Pillow による簡易描画で、PowerPoint と同じではない。和文の書体が無い環境では和文が灰色バーになるが、位置・折り返し・重なり・余白の確認には足りる。赤枠が付いたページは、はみ出しが実測で出ている。
 
-### 高忠実度の描画（使えるときだけ、最後に1回）
+### ハーネス側の描画（使えるときだけ、最後に1回）
 
-簡易描画で位置と構造を直し終えたあとに行う。書体の実寸・影・図表の見え方はこちらが正で、差が出たら実物側に合わせる。
-
-```python
-import os, shutil, subprocess
-
-soffice = shutil.which("soffice") or shutil.which("libreoffice")
-if soffice and shutil.which("pdftoppm"):
-    os.makedirs("deck/qa/hifi", exist_ok=True)
-    subprocess.run([soffice, "--headless", "--convert-to", "pdf",
-                    "--outdir", "deck/qa/hifi", "deck/output.pptx"], check=True, timeout=300)
-    for f in os.listdir("deck/qa/hifi"):          # 前回の画像を消す
-        if f.endswith(".png"):
-            os.remove(os.path.join("deck/qa/hifi", f))
-    subprocess.run(["pdftoppm", "-png", "-r", "110",
-                    "deck/qa/hifi/output.pdf", "deck/qa/hifi/slide"], check=True, timeout=300)
-    print(sorted(f for f in os.listdir("deck/qa/hifi") if f.endswith(".png")))
-else:
-    print("高忠実度の描画は使えない（探したが無かった）")
-```
-
-実行ファイルが無くても、**ハーネス自身が PowerPoint を画像にする手段を持っていればそれを使う**。自分が呼べるツールの一覧で判断する。
+外部の変換ツールには依存しない。**ハーネス自身が PowerPoint を画像にする手段を持っている場合だけ**、簡易描画で位置と構造を直し終えたあとに一度見比べる。自分が呼べるツールの一覧で判断し、無ければ簡易描画までを確認範囲として報告する。
 
 見るのは、簡易描画では分からない次の点に絞る。
 
@@ -135,6 +115,17 @@ for i, s in enumerate(p.slides, 1):
 
 複数ページを見るときは、1ページ分の画像と lint 結果だけを渡したサブエージェントに判定させ、判定（合格／指摘と修正案）だけを受け取る。自分のコンテキストに画像を溜めない。
 
+## ゲート4: 設計（機械では判定できない。デッキ全体で1回）
+
+lint が通っても、**署名が無く形式を選んでいないデッキ**は「無難だが誰が作っても同じ」に見える。ここまでの3ゲートはすべて欠陥を取り除く検査で、欠陥の除去は品質を足さない。最後にこの4項目を自分で確認する。
+
+1. **形式を選んだか。** `outline.md` の各行に「候補: A / B。選: A。理由: 〜」が書かれているか。書かれていないページは、当てはまった形をそのまま採っている
+2. **署名が3層で働いているか。** design-lock のシグネチャ欄が4つとも埋まり、実物で次が確認できるか——全ページの定位置に静かな標識がある／幾何そのものになっているページが1枚ある／初出のページに凡例が1行ある（`motif_legend()`）
+3. **署名が主題から作られているか。** その署名を別の主題のデッキに移せてしまうなら、既製の装飾を選んだだけである
+4. **主役のいない等分が残っていないか。** 横並びの N 個それぞれについて、どれが主役か言えるか。言えないなら表か箇条書きにする（lint の `EQUAL_EMPHASIS`・`CARD_ROW` は手がかりで、判定そのものではない）
+
+このゲートで落ちたときの直し方は「消す」ではない。`design-principles.md` の 2節（不均等に投資する）、5節（署名を主題から作る）、7節（候補を出して選ぶ）に戻る。
+
 ## 数値ガードレール
 
 | 項目 | 値 |
@@ -175,7 +166,7 @@ python3 collections/pptx/scripts/audit-consistency.py     # 文書と実装の�
 
 ## 納品報告に書くこと
 
-- **実行した検査**（lint、簡易描画、高忠実度描画のどれを通したか）と、確認したページ数
+- **実行した検査**（lint、簡易描画、ハーネス側の描画のどれを通したか）と、確認したページ数
 - **検出件数**（errors / warnings と、意図的に残したものの理由）
 - **使用した書体**と、描画で代替が起きたかどうか
 - **残存する要確認事項**（置いた仮定、裏付けの無い数値、利用者に判断してほしいこと）

@@ -390,6 +390,24 @@ def has_fill(el):
     return False
 
 
+def fill_hex(el):
+    """図形の塗り色を 6 桁 HEX で返す。テーマ参照や未指定は None。"""
+    sp_pr = el.find(q("p", "spPr"))
+    if sp_pr is None:
+        return None
+    clr = sp_pr.find(q("a", "solidFill") + "/" + q("a", "srgbClr"))
+    return clr.get("val").upper() if clr is not None and clr.get("val") else None
+
+
+def luminance(hex6):
+    """0（黒）〜1（白）。濃い面かどうかの判定に使う。"""
+    try:
+        r, g, b = (int(hex6[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+    except (TypeError, ValueError):
+        return None
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
 def body_insets(body_pr):
     default = {"l": 0.1, "r": 0.1, "t": 0.05, "b": 0.05}
     if body_pr is None:
@@ -564,6 +582,7 @@ def collect_shapes(pkg, part, layout_pos, master_pos):
                 "placeholder": key,
                 "geom": geometry(el),
                 "filled": has_fill(el),
+                "fill_hex": fill_hex(el),
                 "paragraphs": paras,
                 "text": text,
                 "body_pr": tx_body.find(q("a", "bodyPr")) if tx_body is not None else None,
@@ -749,6 +768,34 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
         bad = sorted(f for f in fonts if f not in lock["fonts"])
         if bad:
             add("DESIGN_LOCK_FONT", "warning", "デザインロックに無い書体: %s" % ", ".join(bad))
+
+    # 1ページの字種。5つ以上あると階層ではなく無秩序になる（footer 帯の細字は数えない）
+    sizes_here = set()
+    for s in text_shapes:
+        if s["box"] is not None and s["box"][1] >= ch - 0.9:
+            continue                                   # フッター帯の細部は除く
+        for para in s["paragraphs"]:
+            if para["text"].strip() and para["sizes"]:
+                sizes_here.add(round(max(para["sizes"])))
+    if len(sizes_here) > 4:
+        add("TYPE_SIZE_COUNT", "info",
+            "1ページに字の大きさが %d 種（%s pt）。4種までに収める（見出し・本文・補足・細字）"
+            % (len(sizes_here), ", ".join(str(int(v)) for v in sorted(sizes_here, reverse=True))))
+
+    # 主役のいない等分: 同じ y・同じ幅・同じ大きさの大きな文字が3つ以上並ぶ
+    big = [s for s in text_shapes
+           if s["box"] is not None and s["box"][2] >= 1.0
+           and max((max(p["sizes"]) for p in s["paragraphs"] if p["sizes"]), default=0) >= 24]
+    lanes = {}
+    for s in big:
+        x, y, w, h = s["box"]
+        size = max(max(p["sizes"]) for p in s["paragraphs"] if p["sizes"])
+        lanes.setdefault((round(y, 1), round(w, 1), round(size)), []).append(s)
+    for (y, w, size), group in lanes.items():
+        if len(group) >= 3:
+            add("EQUAL_EMPHASIS", "info",
+                "%.0fpt・幅%.1fin の文字が %d 個、y=%.1f に等分で並ぶ。主役を1つ決めて大きくする"
+                "（等価な %d 個なら表にする）" % (size, w, len(group), y, len(group)))
 
     # 生成AIらしさ: 飾り線・色帯・縦帯・カード縁の帯
     title_box = title_shape["box"] if title_shape and title_shape["box"] else None
@@ -979,8 +1026,11 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
         for para in s["paragraphs"]:
             if para["text"].strip() and para["sizes"]:
                 body_runs[round(max(para["sizes"]))] += len(para["text"].strip())
-    full_bleed = any(s["box"] is not None and s["filled"] and s["box"][2] >= cw * 0.95 and s["box"][3] >= ch * 0.95
-                     for s in shapes if s["kind"] == "shape")
+    bleed_shapes = [s for s in shapes
+                    if s["kind"] == "shape" and s["box"] is not None and s["filled"]
+                    and s["box"][2] >= cw * 0.95 and s["box"][3] >= ch * 0.95]
+    full_bleed = bool(bleed_shapes)
+    dark_bleed = any((luminance(s["fill_hex"]) or 1.0) < 0.45 for s in bleed_shapes)
     deck_state["records"].append({
         "index": index,
         "title_box": tuple(round(v, 2) for v in title_box) if title_box else None,
@@ -990,6 +1040,7 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
         "family": form_family(shapes, text_shapes, title_shape, cw, ch),
         # 表紙かどうかは、全ページのタイトルサイズが出そろってから決める（consistency_findings）。
         "full_bleed": full_bleed,
+        "dark_bleed": dark_bleed,
     })
     run = deck_state["signatures"][-3:]
     if len(run) == 3 and run[0] == run[1] == run[2] and len(signature) >= 2:
@@ -1088,6 +1139,17 @@ def consistency_findings(report_slides, deck_state):
     for r in records:
         r["is_cover"] = bool(r["full_bleed"] or not r["title_box"] or
                              (majority_title and r["title_size"] and r["title_size"] >= majority_title * 1.25))
+    # 色の拍: 濃い一色面のページは区切りとして働く。4枚以上あると区切りではなく地になる
+    dark = [r["index"] for r in records if r.get("dark_bleed")]
+    if len(dark) > 3:
+        for slide in report_slides:
+            if slide["index"] == dark[0]:
+                slide["findings"].append({
+                    "code": "DARK_PAGE_OVERUSE", "severity": "info",
+                    "message": "濃い一色面のページが %d 枚（p.%s）。3枚までに絞ると区切りとして働く"
+                               % (len(dark), ", ".join(str(i) for i in dark))})
+                break
+
     body = [r for r in records if not r["is_cover"]]
     if len(body) < 4:
         return

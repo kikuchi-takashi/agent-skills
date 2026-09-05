@@ -216,6 +216,10 @@ class Renderer(object):
             return
         box = [self.px(x), self.px(y), self.px(x + w), self.px(y + h)]
         geom = shape["geom"] or "rect"
+        # 塗りも線も無い図形は何も描かない。Pillow は fill と outline の両方が None のとき
+        # 既定のインクで描くため、そのまま渡すと textbox や透明な四角に白い枠が出る。
+        if fill is None and line is None and geom != "line":
+            return
         if geom == "roundRect":
             adj = 16667
             for gd in el.iter(L.q("a", "gd")):

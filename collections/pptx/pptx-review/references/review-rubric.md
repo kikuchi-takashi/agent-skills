@@ -49,6 +49,9 @@
 | MIXED_FONTS | 重要 | 書体が4種類以上 |
 | DESIGN_LOCK_FONT / DESIGN_LOCK_COLOR | 重要 | ロックに無い書体・色 |
 | CARD_ROW | 軽微 | 同型の塗り面が3枚以上横並び（内容の数と一致すれば可） |
+| EQUAL_EMPHASIS | 軽微 | 同じ大きさの大きな文字が3つ以上、等分に並ぶ。主役が決まっていない（等価なら表にする） |
+| TYPE_SIZE_COUNT | 軽微 | 1ページの字の大きさが5種以上。階層ではなく無秩序になっている |
+| DARK_PAGE_OVERUSE | 軽微 | 濃い一色面のページが4枚以上。区切りとして働かず地になっている |
 | FULL_WIDTH_RULE | 軽微 | 全幅の罫線（フッター1本なら可） |
 | MARGIN_TIGHT | 軽微 | テキストが余白 0.4in に入り込んでいる |
 | NO_EA_FONT | 軽微 | 和文 run に ea 書体が無い |

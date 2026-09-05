@@ -354,6 +354,70 @@ def _(g, p):
     g["chrome"](s, page=6, total=6, section="第2章 打ち手")
 
 
+@case("主役のいない等分の数字を咎める", expect=["EQUAL_EMPHASIS"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "3つの指標がいずれも改善した")
+    cols = g["spread"](3, g["M"], g["W"] - 2 * g["M"], gap=0.5)
+    for (cx, cw), (value, label) in zip(cols, [("42%", "解約率"), ("18日", "リード"), ("3.1倍", "問合せ")]):
+        g["text"](s, cx, g["BODY_Y"], cw, 1.0, value, 44, color="accent", bold=True)
+        g["text"](s, cx, g["BODY_Y"] + 1.1, cw, 0.4, label, g["SIZE"]["note"], color="muted")
+
+
+@case("metrics は主役があるので咎めない", forbid=["EQUAL_EMPHASIS"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "解約率の低下が最も効いた")
+    g["metrics"](s, g["M"], g["BODY_Y"], g["W"] - 2 * g["M"],
+                 [("42%", "解約率の低下"), ("18日", "リード短縮"), ("3.1倍", "問合せ増")])
+
+
+@case("1ページに字種が多すぎると咎める", expect=["TYPE_SIZE_COUNT"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "字の大きさが揃っていないページの主張")
+    for i, size in enumerate((36, 30, 24, 20, 16)):
+        g["text"](s, g["M"], g["BODY_Y"] + i * 0.7, 9.0, 0.6, "大きさ %dpt の行" % size, size)
+
+
+@case("字種が4種までなら咎めない", forbid=["TYPE_SIZE_COUNT"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "字の大きさを4種に収めたページの主張")
+    for i, size in enumerate((g["SIZE"]["h2"], g["SIZE"]["body"], g["SIZE"]["note"])):
+        g["text"](s, g["M"], g["BODY_Y"] + i * 0.8, 9.0, 0.6, "大きさ %dpt の行" % size, size)
+
+
+@case("濃い面のページが4枚あると咎める", expect=["DARK_PAGE_OVERUSE"])
+def _(g, p):
+    base(g, p)
+    for i in range(4):
+        s = g["blank"](p)
+        g["rect"](s, 0, 0, g["W"], g["H"], "primary")
+        g["text"](s, g["M"], 3.0, 9.0, 1.0, "第%d章 ここから変える" % (i + 1), g["SIZE"]["cover"], color="bg")
+    for i in range(4):
+        s = g["blank"](p)
+        g["page_title"](s, "本文ページ%dの主張をここに書く" % (i + 1))
+        g["text"](s, g["M"], g["BODY_Y"], 9.0, 2.0, ["本文の行", "本文の行"], g["SIZE"]["body"])
+
+
+@case("濃い面が3枚までなら咎めない", forbid=["DARK_PAGE_OVERUSE"])
+def _(g, p):
+    base(g, p)
+    for i in range(3):
+        s = g["blank"](p)
+        g["rect"](s, 0, 0, g["W"], g["H"], "primary")
+        g["text"](s, g["M"], 3.0, 9.0, 1.0, "第%d章 ここから変える" % (i + 1), g["SIZE"]["cover"], color="bg")
+    for i in range(4):
+        s = g["blank"](p)
+        g["page_title"](s, "本文ページ%dの主張をここに書く" % (i + 1))
+        g["text"](s, g["M"], g["BODY_Y"], 9.0, 2.0, ["本文の行", "本文の行"], g["SIZE"]["body"])
+
+
 @case("入れ子の箇条書き", forbid=["TEXT_OVERFLOW_LIKELY"])
 def _(g, p):
     base(g, p)

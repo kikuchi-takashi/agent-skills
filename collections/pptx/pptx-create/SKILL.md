@@ -30,7 +30,7 @@ metadata:
 実行環境で使えるものを確かめ、経路を決める。結果は品質確認の報告に残す。
 
 ```python
-import importlib, shutil
+import importlib
 
 for name in ("pptx", "lxml", "PIL", "xlsxwriter"):
     try:
@@ -38,20 +38,14 @@ for name in ("pptx", "lxml", "PIL", "xlsxwriter"):
         print("%-12s %s" % (name, getattr(m, "__version__", "available")))
     except ImportError:
         print("%-12s unavailable" % name)
-
-# 高忠実度の描画に使える実行ファイルを探す（両方そろって初めて使える）
-soffice = shutil.which("soffice") or shutil.which("libreoffice")
-print("%-12s %s" % ("soffice", soffice or "unavailable"))
-print("%-12s %s" % ("pdftoppm", shutil.which("pdftoppm") or "unavailable"))
 ```
 
-上のどちらかが `unavailable` でも、**ハーネス自身が PowerPoint を画像にする手段を持っていればそれを使います**（自分が呼べるツールの一覧で判断する）。どちらも無ければ「探したが無かった」と報告に書きます。
+描画確認は Pillow による簡易描画で行います。外部の変換ツールには依存しません。**ハーネス自身が PowerPoint を画像にする手段を持っている場合だけ**、最後に一度それで見比べます（自分が呼べるツールの一覧で判断する)。
 
 | 能力 | 有るとき | 無いとき |
 |---|---|---|
 | `python-pptx`・`lxml`・`Pillow`・`XlsxWriter` | 通常どおり生成・編集する | 純 Python のもの（`python-pptx`、`XlsxWriter`）は作業ディレクトリに同梱して `sys.path` に加える。`lxml` と `Pillow` は同梱できないため、生成できないことを利用者に伝える |
 | 簡易描画（`Pillow`） | `render_preview.py` で全ページを描いて確認する | 描画確認を省き、lint と幾何の数値で確認したと報告する |
-| **高忠実度の描画**（`soffice` と `pdftoppm` がそろう、またはハーネスが同等の手段を持つ） | 最終成果物を再描画し、簡易描画との表示差を確認する。手順は `references/qa.md` ゲート3 | 「探したが無かった」と記録し、簡易描画までを確認範囲として報告する |
 | 素材の読み込み・加工（PDF・Word・Excel・画像処理のライブラリ） | 元資料からの抽出や画像の加工に使う | 利用者に必要な形で素材をもらう |
 
 ### 1. ブリーフ（`deck/brief.md`）
@@ -64,11 +58,15 @@ print("%-12s %s" % ("pdftoppm", shutil.which("pdftoppm") or "unavailable"))
 
 `references/storyline.md` に従い、1枚ごとに「主張を一文で書いたタイトル」「役割」「証拠と出典」「展示物（図・表・数字・文）」「密度」を書く。書いたらタイトルだけを順に読み、それだけで論旨が通るか確認する（ゴーストデッキテスト）。通らなければ生成に進まない。
 
+**展示物は、候補を2つ以上出してから選ぶ。** `references/design-principles.md` 7節の手順で、まず内容の形（流れる・詰まる・積み上がる・対になる…）を言葉にし、そこから候補を2〜3個出し、決め手で選ぶ。各行に一行残す——**「候補: A / B。選: A。理由: 〜」**。理由が書けないページは、まだ形式を選んでいない。最初に当てはまった形をそのまま採ると、デッキ全体が同じ形の繰り返しになる。
+
 10枚を超える、または内容が複雑なら、この段階で利用者に構成を見せて確認を取る。
 
 ### 3. デザインロック（`deck/design-lock.md` と `deck/design-lock.json`）
 
-まず `references/design-principles.md` の1〜5節（主題から導く、不均等に投資する、リズム、層の分離、シグネチャ）を読み、このデッキの方向を決める。そのうえで `references/design-lock.md` の雛形で、パレット・書体・型スケール・グリッド・シグネチャ・レイアウト名簿を確定する。書体は `references/typography-ja.md`、原型は `references/layout-catalog.md`。ロック前に `references/anti-ai-checklist.md` の視覚項目で点検する。
+まず `references/design-principles.md` の1〜5節（主題から導く、不均等に投資する、リズム、層の分離、シグネチャ）を読み、このデッキの方向を決める。そのうえで `references/design-lock.md` の雛形で、パレット・書体・型スケール・グリッド・シグネチャ・レイアウト名簿を確定する。
+
+**シグネチャは主題から作る。** 既製の装飾（色帯・飾り線・アイコン入りの丸・角丸カードの反復）を選ぶのはロックではない。4条件（主題由来／1つの形に1つの意味／初出で凡例／静かな標識・幾何そのものの1枚・凡例の3層）を design-lock に書き切る。書けないなら、まだ署名が無い。書体は `references/typography-ja.md`、原型は `references/layout-catalog.md`。ロック前に `references/anti-ai-checklist.md` の視覚項目で点検する。
 
 8枚を超えるデッキでは、表紙と本文1枚だけを先に生成・描画して利用者に見せ、方向を確定してから全ページを作る。ブランド制約が無く方向が定まらないときは、主題から導いた案を2つ（それぞれ表紙＋本文1枚）並べて選んでもらう。3つ以上は出さない。
 
@@ -76,9 +74,11 @@ print("%-12s %s" % ("pdftoppm", shutil.which("pdftoppm") or "unavailable"))
 
 `references/engine-notes.md` の骨格に従い、1本の python-pptx スクリプトで全ページを生成する。座標・色・サイズはロックの定数から導き、スクリプト内に直値を散らさない。
 
-**ページは原型（`skeleton()` とレイアウト関数）から選ぶ。** 表紙・章扉・主張＋証拠・非対称分割・比較・一文・大きな数字・表・手順・結論の10種がある。伝達の目的で選び、同じ原型を3枚以上続けない。主役（図・文・数字・表）を回す。
+**ページは工程2で選んだ形式に対応する原型（`skeleton()` とレイアウト関数）で組む。** 20種ある。同じ原型を3枚以上続けない。主役（図・文・数字・表・写真）を回す。
 
-配置はヘルパーで計算し、手で y を置かない。均等配置は `vstack` と `spread`、**非対称は `split((1, 2))` のような比率、裁ち落としは `bleed()`** で表す。手置きを避けるのは事故を防ぐためで、非対称や裁ち落としを避けるためではない。
+配置はヘルパーで計算し、手で y を置かない。縦積みは `vstack`、**非対称は `split((1, 2))` のような比率、主役のある横並びは `emphasis(n, hero)`、裁ち落としは `bleed()`** で表す。手置きを避けるのは事故を防ぐためで、非対称や裁ち落としを避けるためではない。
+
+**等分（`spread`）と面（`fill`）は既定ではない。** 横に N 個並べる前にどれが主役かを決め、`emphasis(n, hero)` を使う。主役が決まらない N 個は、横並びではなく表か箇条書きにする内容である。面で囲むのは、項目が並列・無順序・等重みのときだけ（`box_text()` と `rect()` の `fill` の既定は `None`）。
 
 図表は原則ネイティブ（`add_chart`、`add_table`）で作り、画像化しない。発表者ノートに話す内容と出典を入れる。
 
@@ -86,7 +86,7 @@ print("%-12s %s" % ("pdftoppm", shutil.which("pdftoppm") or "unavailable"))
 
 ### 5. 品質確認（`deck/qa/`）
 
-`references/qa.md` の3ゲート（内容・ファイル・視覚）を通す。描画の手順と、高忠実度の描画が使えるときの追加確認はゲート3にある。
+`references/qa.md` の4ゲート（内容・ファイル・視覚・設計）を通す。描画の手順はゲート3、**署名と形式選択の確認はゲート4**にある。ゲート1〜3は欠陥を取り除く検査で、欠陥の除去は品質を足さない。ゲート4を飛ばさない。
 
 **pptx-review スキルが導入済みなら、別コンテキスト（サブエージェント）で監査させる。** 無ければ `references/qa.md` のチェックリストと描画画像で自分で行うが、生成直後の自分の目は甘いので、全ページを新鮮な目で見直す。
 

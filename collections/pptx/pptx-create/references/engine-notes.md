@@ -87,11 +87,26 @@ def fit_size(text, w, max_size, min_size=32, step=2):
 
 
 def spread(n, x, total_w, gap=GAP):
-    """N 個を横に等分したときの (x, 幅) の列を返す。固定幅を N 回並べない。"""
+    """N 個を横に**等分**したときの (x, 幅) の列を返す。固定幅を N 回並べない。
+
+    等分は既定ではない。項目が並列・無順序・等重みだと言えるときだけ使う。
+    どれかが主役なら emphasis(n, hero) を使う。
+    """
     w = (total_w - gap * (n - 1)) / max(n, 1)
     if w <= 0:
         raise ValueError("%d 個は幅 %.2f に収まらない。分割する" % (n, total_w))
     return [(x + i * (w + gap), w) for i in range(n)]
+
+
+def emphasis(n, hero=0, x=M, total_w=None, ratio=1.6, gap=GAP):
+    """N 個を横に割るが、hero 番目だけ ratio 倍広くする。
+
+    **等分は既定ではない。** 並べる N 個のうち、どれが主役かをまず決める。
+    主役が決まらないなら、それは横に並べる内容ではない（表か箇条書きにする）。
+    本当に等価・無順序・等重みのときだけ spread() を使う。
+    """
+    weights = [ratio if i == hero else 1.0 for i in range(n)]
+    return split(weights, x=x, total_w=total_w, gap=gap)
 
 
 def content_band(top=BODY_Y, bottom=BODY_END):
@@ -131,7 +146,7 @@ def skeleton(kind):
     band_x, band_y, band_w, band_h = content_band()
     if kind == "cover":
         return {"canvas": (0, 0, W, H), "title": (0.8, 2.3, W - 1.6, text_height(2, SIZE["cover"])),
-                "meta": (0.8, 4.7, W - 1.6, 0.5)}
+                "meta": (0.8, 4.7, W - 1.6, None)}      # 高さは行数から決める（slide_cover）
     if kind == "divider":
         num_h = text_height(1, 84, slack_lines=0)
         return {"canvas": (0, 0, W, H), "number": (0.8, 1.6, 4.0, num_h),
@@ -287,12 +302,16 @@ def text(slide, x, y, w, h, lines, size, color="text", bold=False,
     return box
 
 
-def rect(slide, x, y, w, h, fill, rounded=False):
+def rect(slide, x, y, w, h, fill=None, rounded=False):
+    """四角。**fill=None は面を敷かない**（既定）。面を敷くのは選択であって初期値ではない。"""
     shape = slide.shapes.add_shape(
         MSO_SHAPE.ROUNDED_RECTANGLE if rounded else MSO_SHAPE.RECTANGLE,
         Inches(x), Inches(y), Inches(w), Inches(h))
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = RGBColor.from_string(C[fill])
+    if fill is None:
+        shape.fill.background()       # 透明。文字だけを置くときの既定
+    else:
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = RGBColor.from_string(C[fill])
     shape.line.fill.background()      # 枠線を消す
     shape.shadow.inherit = False      # 既定の影を消す
     return shape
@@ -404,13 +423,17 @@ def scrim(slide, x, y, w, h, color="primary", transparency=45):
 
 # --- 図形の中の文字と、図形をつなぐ線 ---
 
-def box_text(slide, x, y, w, h, lines, size=None, fill="panel", color="text",
+def box_text(slide, x, y, w, h, lines, size=None, fill=None, color="text",
              bold=False, align=PP_ALIGN.LEFT, pad=0.2, min_size=10, rounded=False):
     """文字の入った四角。**図形に直接文字を書かない**。この関数を使う。
 
     自分で `shape.text_frame.text = ...` と書くと、書体・サイズ・和文書体・
     余白・縦位置がすべて PowerPoint の既定になり、環境ごとに崩れる。
     ここでは枠に収まるサイズを選び、上下中央に置き、和文書体まで指定する。
+
+    **fill の既定は None（面なし）。** カードは「並列・無順序・等重み」の項目に
+    対してだけ選ぶ形式で、既定ではない。順序・量・関係・時間・二軸のどれかが
+    内容にあるなら、面を敷かずに別の形式にしたほうがほぼ常に強い。
     """
     size = size or SIZE["body"]
     shape = rect(slide, x, y, w, h, fill, rounded=rounded)
@@ -537,16 +560,24 @@ def timeline(slide, x, y, w, milestones, label_size=None):
     return y + 0.8 + text_height(2, SIZE["body"])
 
 
-def flow(slide, x, y, w, h, steps, gap=None):
-    """処理の流れ。箱を等分に並べ、間を矢印でつなぐ。5つまで。
-    順序が意味を持つときだけ使う。持たないなら箇条書きにする。"""
+def flow(slide, x, y, w, h, steps, gap=None, fill="panel", hero=None):
+    """処理の流れ。箱を並べ、間を矢印でつなぐ。5つまで。
+
+    等分でよい数少ない形式（工程は等価で、順序だけが意味を持つ）。ただし
+    **ある工程が主役なら hero にその番号を渡す**——律速の工程、変えた工程、
+    落ちている工程。全部同じ大きさの箱が並ぶページは、たいてい何も言っていない。
+    順序が意味を持たないなら箇条書きにする。
+    """
     gap = GAP if gap is None else gap
-    boxes = spread(len(steps), x, w, gap=gap)
+    boxes = (spread(len(steps), x, w, gap=gap) if hero is None
+             else emphasis(len(steps), hero, x=x, total_w=w, gap=gap))
     shapes = []
-    for (bx, bw), step in zip(boxes, steps):
+    for i, ((bx, bw), step) in enumerate(zip(boxes, steps)):
         head, body = step if isinstance(step, (tuple, list)) else (step, None)
         rows = [head] + ([body] if body else [])
-        shape = box_text(slide, bx, y, bw, h, rows, size=SIZE["body"], align=PP_ALIGN.LEFT)
+        shape = box_text(slide, bx, y, bw, h, rows, size=SIZE["body"],
+                         fill=("accent" if i == hero else fill), align=PP_ALIGN.LEFT,
+                         color=("bg" if i == hero else "text"))
         if body:                                 # 見出しだけ太字にする
             shape.text_frame.paragraphs[0].runs[0].font.bold = True
         shapes.append(shape)
@@ -555,15 +586,26 @@ def flow(slide, x, y, w, h, steps, gap=None):
     return boxes
 
 
-def metrics(slide, x, y, w, items, size=None):
+def metrics(slide, x, y, w, items, size=None, hero=0):
     """数字とラベルを横に並べる。3つまで。数字が主張を支えるときだけ使う。
-    items は [(数字, ラベル), ...]。"""
+    items は [(数字, ラベル), ...]。
+
+    **hero の1つだけが大きく、色を持つ。** 同じ大きさの数字が等間隔に3つ並ぶ形は、
+    主張の無いページを数字で埋めるときの定型。どれが主役か決まらないなら、
+    その3つは横並びではなく表にする。hero=None なら等価に並ぶが、
+    3つとも本当に等価な指標だと確かめてから渡す。
+    """
     size = size or 44
-    cols = spread(len(items), x, w, gap=0.5)
+    cols = (spread(len(items), x, w, gap=0.5) if hero is None
+            else emphasis(len(items), hero, x=x, total_w=w, ratio=1.6, gap=0.5))
     num_h = text_height(1, size, slack_lines=0)
-    for (cx, cw_), (value, label) in zip(cols, items):
-        fitted = fit_size(str(value), cw_, size, min_size=24)
-        text(slide, cx, y, cw_, num_h, str(value), fitted, color="accent", bold=True)
+    for i, ((cx, cw_), (value, label)) in enumerate(zip(cols, items)):
+        lead = (i == hero)
+        cap = size if lead else int(size * 0.62)          # 脇は静かにする
+        fitted = fit_size(str(value), cw_, cap, min_size=20)
+        drop = 0 if lead else num_h - text_height(1, cap, slack_lines=0)
+        text(slide, cx, y + drop, cw_, num_h - drop, str(value), fitted,
+             color=("accent" if lead else "text"), bold=lead)
         text(slide, cx, y + num_h + 0.15, cw_, 0.4, label, SIZE["note"], color="muted")
     return y + num_h + 0.55
 
@@ -576,14 +618,24 @@ def quote(slide, x, y, w, body, source=None):
     return y + text_height(3, SIZE["h2"]) + 0.5
 
 
-def before_after(slide, x, y, w, h, before, after, labels=("導入前", "導入後")):
-    """対比。左右に並べ、間に矢印を置く。before / after は行の列。"""
-    (lx, lw), (rx, rw) = spread(2, x, w, gap=0.8)
-    for (bx, bw), label, lines, tone in (((lx, lw), labels[0], before, "muted"),
-                                         ((rx, rw), labels[1], after, "text")):
+def before_after(slide, x, y, w, h, before, after, labels=("導入前", "導入後"),
+                 weights=(1, 1.5)):
+    """対比。左右に並べ、間に矢印を置く。before / after は行の列。
+
+    **左右は等分にしない。** 主張を運ぶのは片側（多くは後）で、そちらを広く取る。
+    等分の左右2枚は、どちらを見ればよいかを言っていない。前の状態こそが主張なら
+    weights=(1.5, 1) を渡す。面は主役の側にだけ敷き、脇は地のまま置く。
+    """
+    (lx, lw), (rx, rw) = split(list(weights), x=x, total_w=w, gap=0.8)
+    lead = 1 if weights[1] >= weights[0] else 0
+    for i, ((bx, bw), label, lines) in enumerate((((lx, lw), labels[0], before),
+                                                  ((rx, rw), labels[1], after))):
         text(slide, bx, y, bw, 0.4, label, SIZE["note"], color="muted")
-        rect(slide, bx, y + 0.5, bw, h - 0.5, "panel")
-        text(slide, bx + 0.25, y + 0.75, bw - 0.5, h - 1.0, lines, SIZE["body"], color=tone)
+        if i == lead:
+            rect(slide, bx, y + 0.5, bw, h - 0.5, "panel")
+        pad = 0.25 if i == lead else 0.0
+        text(slide, bx + pad, y + 0.75, bw - pad * 2, h - 1.0, lines, SIZE["body"],
+             color=("text" if i == lead else "muted"))
     arrow = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, Inches(lx + lw + 0.15),
                                    Inches(y + h / 2), Inches(0.5), Inches(0.2))
     arrow.fill.solid(); arrow.fill.fore_color.rgb = RGBColor.from_string(C["accent"])
@@ -591,11 +643,23 @@ def before_after(slide, x, y, w, h, before, after, labels=("導入前", "導入�
     return y + h + 0.5
 
 
+def motif_legend(slide, meaning, x=M, y=None, w=5.0):
+    """モチーフの凡例。**主題由来の印を初めて出すページに、必ず1行添える。**
+
+    署名は「見たことのない形」なので、初出で意味を言わないと装飾に見える。
+    meaning は形が何を表すかの一文（「太線＝実測、細線＝推計」「■＝取得済、□＝未取得」）。
+    凡例そのものは署名の出現回数に数えない。
+    """
+    y = BODY_END - 0.35 if y is None else y      # 本文領域の下端。埋まっているなら y を渡す
+    return text(slide, x, y, w, 0.35, meaning, SIZE["note"], color="muted")
+
+
 def chrome(slide, page=None, total=None, section=None, logo=None):
     """全ページ共通の細部。ページ番号・章の進行表示・ロゴを定位置に置く。
     静かな層なので、位置と大きさを全ページで変えない。"""
-    if section:
-        text(slide, M, FOOT_Y, 6.0, 0.35, section, SIZE["source"], color="muted")
+    if section:                                  # 左は page_source() が使うので右に寄せる
+        text(slide, W - M - 5.4, FOOT_Y, 4.0, 0.35, section, SIZE["source"],
+             color="muted", align=PP_ALIGN.RIGHT)
     if page is not None:
         label = "%d / %d" % (page, total) if total else str(page)
         text(slide, W - M - 1.2, FOOT_Y, 1.2, 0.35, label, SIZE["source"],
@@ -623,7 +687,8 @@ def page_title(slide, title):
 
 
 def page_source(slide, source):
-    text(slide, M, FOOT_Y, 9, 0.35, source, SIZE["source"], color="muted")
+    """出典。フッター左の 6.5in。右側は chrome() の章名とページ番号が使う。"""
+    text(slide, M, FOOT_Y, 6.5, 0.35, source, SIZE["source"], color="muted")
 
 
 # --- レイアウト関数（layout-catalog.md の原型に対応。主役を回すために使い分ける） ---
@@ -634,7 +699,10 @@ def slide_cover(prs, title, meta, dark=True):
     if dark:
         rect(s, *k["canvas"], fill="primary")
     text(s, *k["title"], lines=title, size=SIZE["cover"], color="bg" if dark else "text", bold=True)
-    text(s, *k["meta"], lines=meta, size=18, color="line" if dark else "muted")
+    mx, my, mw, _ = k["meta"]                    # 高さは行数から決める（固定だと2行目が溢れる）
+    rows = meta if isinstance(meta, list) else [meta]
+    text(s, mx, my, mw, text_height(len(rows), 18), lines=rows, size=18,
+         color="line" if dark else "muted")
     return s
 
 
@@ -873,7 +941,8 @@ if __name__ == "__main__":
 - **`text_frame.text = "..."` は書式を消す。** 段落が1つの無書式 run に潰れる。必ず `run.text` に書く。
 - **`add_textbox` の既定は折り返し無し（`wrap="none"`）と `spAutoFit`。** そのままだと1行で右へ伸び、箱の大きさも文字に合わせて変わる。必ず `word_wrap = True` と `auto_size = MSO_AUTO_SIZE.NONE` にし、箱の高さは `text_height()` で決める。
 - **`normAutofit`（文字の自動縮小）を使わない。** PowerPoint で開いたときだけ縮小され、描画確認とずれる。縮小後のサイズが下限を割る。
-- **N 個を横に並べるときは `spread()` で幅を計算する。** 固定幅を N 回置くと、N が増えたときに右端が溢れる。
+- **等分は既定ではない。** N 個を横に並べる前に、どれが主役かを決める。主役があるなら `emphasis(n, hero)`、本当に等価・無順序・等重みのときだけ `spread()`。主役が決まらない N 個は、横並びではなく表か箇条書きにする内容である。固定幅を N 回置くのは、どちらの場合も間違い（N が増えると右端が溢れる）。
+- **面（カード）は既定ではない。** `box_text()` と `rect()` の `fill` の既定は `None`（面なし）。内容に順序・量・関係・時間・二軸のどれかがあるなら、面で囲むより別の形式のほうがほぼ常に強い。角丸の面を並べてよいのは、項目が並列・無順序・等重みのときだけ。
 - **`MODE` は最初に決める。** 講演型と資料型でサイズが違う。途中で変えると型スケールが混ざる。lint の `--mode` にも同じ値を渡す。
 - **縦に積むときは `vstack()`、下端の注記は `bottom_note()`、本文の範囲は `content_band()`。** 手で y を置くと、文言が1行増えた瞬間に重なる。`vstack()` は収まらないと例外を出すので、黙って重ならない。
 - **大きな数字は `fit_size()` でサイズを決める。** 「1,200万円」のように長い数字は 84pt では収まらない。本文には使わない（本文が収まらないときは文字を減らす）。
@@ -885,7 +954,7 @@ if __name__ == "__main__":
 - **自動縮小に頼らない。** `auto_size = MSO_AUTO_SIZE.NONE` にし、文字数の予算で収める。`SHAPE_TO_FIT_TEXT` は PowerPoint で開き直すまで反映されないことがある。
 - **スライドの複製ができない。** 同じ構成のページは関数で再生成する。テンプレのスライド複製が必要なら OOXML を直接扱う。
 - **ネイティブ図表の書式は既定が古い。** `chart.has_title`、`chart.has_legend`（単系列は False）、`plot.has_data_labels`、系列の色、目盛線の色（`value_axis.major_gridlines.format.line.color.rgb`）、`category_axis.tick_labels.font.size` を必ず設定する。縦の目盛線は消す。骨格の `bar_chart()` が最低限を行う。
-- **負の値の棒は、`<c:invertIfNegative val="0"/>` を系列に明示する。** python-pptx はこれを書かず、PowerPoint 以外のビューア（LibreOffice など）では負の棒が絶対値で上向きに描かれる（実測: −1.9 が +1.9 に見える）。受け手がそのビューアで開くと数値が違って見える。負の値があるときは項目名の位置を `XL_TICK_LABEL_POSITION.LOW` にして棒と重ねない。
+- **負の値の棒は、`<c:invertIfNegative val="0"/>` を系列に明示する。** python-pptx はこれを書かず、PowerPoint 以外のビューアでは負の棒が絶対値で上向きに描かれることがある（実測: −1.9 が +1.9 に見える）。受け手がそのビューアで開くと数値が違って見える。負の値があるときは項目名の位置を `XL_TICK_LABEL_POSITION.LOW` にして棒と重ねない。
 - **図表の文字にも書体を設定する。** `chart.font.name` と `chart.font.size` を設定し、和文ラベルがあるなら `txPr` に `a:ea` を追加する。
 - **表のセルにも内側余白がある。** `cell.margin_left` などで統一する。表の既定スタイルは色が強いので、`tbl.first_row = False` にして自分で塗る。
 - **画像は縦横比を保つ。** 幅か高さの一方だけ指定する。トリミングは `picture.crop_left` などで行う。
