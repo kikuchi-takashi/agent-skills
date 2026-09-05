@@ -1,51 +1,106 @@
 # PPTX Skill Set
 
-PowerPoint（.pptx）を、生成AIらしさを出さず、デザインを安定させて作る・直す・監査するためのスキル群です。特定のエージェント製品には依存しません。
+PowerPoint（`.pptx`）の設計、生成、編集、監査を一貫した品質基準で行う Agent Skills コレクションです。内容設計、デザインロック、編集可能な成果物、機械検査、描画確認を組み合わせ、用途に合ったデッキを再現可能な形で仕上げます。
 
-- `pptx-create`: 要件や原稿から新しいデッキを設計・生成する。構成 → デザインロック → 生成 → 品質確認
-- `pptx-edit`: 既存デッキを、元のデザインシステムを壊さずに編集する。テンプレ流し込み、AIっぽい装飾の除去を含む
-- `pptx-review`: デッキを変更せずに監査し、設計値の抽出（`extract_style.py`）、機械検査（`pptx_lint.py`）、簡易描画（`render_preview.py`）で判定する。生成者とは別のコンテキストで使う
+## スキルを選ぶ
 
-## 設計方針
+| スキル | 用途 | 主な成果物 |
+|---|---|---|
+| `pptx-create` | 要件、原稿、資料から新しいデッキを設計・生成する | `.pptx`、ブリーフ、構成、デザインロック、QA結果 |
+| `pptx-edit` | 既存デッキの内容やページを、元のデザインシステムに合わせて編集する | 編集済み `.pptx`、変更内容、QA結果 |
+| `pptx-review` | デッキを変更せず、構造、レイアウト、文章、デザインの整合を監査する | 監査報告、lint結果、描画画像 |
 
-- **内容が先、装飾は後。** タイトルは主張の一文、1枚1主張、展示物は1つ
-- **デザインは生成前にロックする。** パレット・書体・型スケール・グリッド・レイアウト名簿を固定し、全ページをそこから導出する。既存デッキやテンプレがあれば、その設計値を機械的に抽出したものがロック
-- **既存に足すときは複製から作る。** 新しい要素はゼロから組まず、同じ役割の既存要素を複製して文言だけ変える。ページ間の乖離は lint が検出する
-- **生成AIらしさの兆候を名指しで避ける。** タイトル下の飾り線、上下の色帯、同型カード、絵文字、誇張語彙、話題ラベル型タイトルなど。視覚・文章（日本語）・構造の3層で点検する
-- **合格は機械の出力と描画画像で示す。** 口頭の合格宣言を認めない
-- **生成者と監査者を分ける。** 生成した本人は自分の期待を見てしまう
+新規作成は `pptx-create`、既存ファイルの変更は `pptx-edit`、評価だけなら `pptx-review` を使います。作成・編集後の品質確認では `pptx-review` を別コンテキストで実行すると、生成時の思い込みから独立した判定になります。
+
+## 共通ワークフロー
+
+1. 聴衆、目的、利用場面、言語、枚数、ブランド制約、素材をブリーフにまとめる。
+2. 各ページの主張、役割、証拠、展示物を構成として定義する。
+3. パレット、書体、型スケール、グリッド、レイアウト原型をデザインロックに記録する。
+4. デザインロックから編集可能な `.pptx` を生成または編集する。
+5. lintと描画画像を照合し、指摘箇所を修正する。
+6. 成果物、仮定、要確認事項、検証結果をまとめて納品する。
+
+設計では次の基準を共有します。
+
+- タイトルをページの主張として書き、1枚に1つの論点と中心展示物を置く。
+- 色、書体、余白、タイトル位置を静かな共通層として揃え、レイアウト、主役、密度にリズムをつける。
+- 既存デッキでは、実測した設計値と同じ役割の既存要素を編集の基準にする。
+- 装飾には情報上の役割を持たせ、主張と証拠の視線誘導を優先する。
+- 品質判定には、機械検査の結果、描画画像、確認範囲を添える。
 
 ## インストール
+
+リポジトリのCLIからコレクションをまとめて導入します。
 
 ```bash
 skills install collection:pptx --root collections --target ~/.agents/skills
 ```
 
-3つのスキルがフラットにコピーされます。`pptx-create` と `pptx-edit` は単体でも動きますが、`pptx-review` が同時に導入されていると、品質確認で `pptx_lint.py` と `render_preview.py` を使えます。
+3つのスキルはインストール先へフラットにコピーされ、それぞれ単独でも利用できます。`pptx-review` には次の補助ツールが含まれます。
 
-## 前提
+- `extract_style.py`: 既存デッキからデザインロックを抽出する
+- `pptx_lint.py`: OOXMLを解析し、構造・配置・文字・デザインの問題を報告する
+- `render_preview.py`: スライドとコンタクトシートを簡易描画する
 
-- Python 3.9 以上
-- `python-pptx`（生成・編集。lxml、Pillow、XlsxWriter に依存）
-- Pillow（描画確認）
-- `pptx_lint.py` は標準ライブラリのみで動く
-- 外部ツール（LibreOffice など）、ネットワーク、追加インストールは不要。シェルが無い環境でも Python だけで手順が完結する
-- 和文の書体ファイルがあれば描画確認で字形まで出る。無ければ和文は文字幅どおりの灰色バーで代替される
+## 実行環境と能力選択
 
-## 保守用スクリプト（配布物ではない）
+Python 3.9以上を基準とし、着手時に利用できるライブラリを確認して実行経路を決めます。
 
-`scripts/` はこのコレクションを変更したときに走らせる検査です。スキルには含まれません。
+```python
+import importlib
 
-- `eval-checks.py`: 出るべき指摘が出て、出てはいけない指摘が出ないかを 23 件のケースで測る
-- `audit-consistency.py`: 文書に書いた数値・原型名・フラグが実装と食い違っていないかを確かめる
+modules = ["pptx", "lxml", "PIL", "xlsxwriter"]
+for name in modules:
+    try:
+        module = importlib.import_module(name)
+        version = getattr(module, "__version__", "available")
+        print(f"{name:12} {version}")
+    except ImportError:
+        print(f"{name:12} unavailable")
+```
 
-## 参考にしたもの
+| 能力 | 実行要件 | 担当 |
+|---|---|---|
+| PPTXの構造監査と設計値抽出 | Python標準ライブラリ | `pptx_lint.py`、`extract_style.py` |
+| PPTXの生成・編集 | `python-pptx`、`lxml`、`Pillow`、`XlsxWriter` | `pptx-create`、`pptx-edit` |
+| 簡易描画とコンタクトシート | `Pillow` | `render_preview.py` |
+| データ集計、画像加工、素材抽出 | 実行環境に備わる関連ライブラリ | 入力資料とスライド表現に応じて選択 |
+| 高忠実度の描画確認 | ハーネスが提供するPowerPoint互換レンダラー | 簡易描画を補完する最終確認 |
 
-以下の公開スキル・リポジトリの考え方を参考に、文面は日本語で書き起こしました。文章やコードの転載はしていません。
+和文書体が利用できる場合、簡易描画は実際の字形と文字幅を使います。書体ファイルを `render_preview.py --font path.ttf` で指定することもできます。代替描画になった文字や図形は、納品時に確認範囲として記録します。
 
-- anthropics/skills（pptx）: エンジンの落とし穴、視覚QAの手順、装飾の禁止リスト
-- EveryInc/hands-on-deck（designing-slides.md）: 主題からデザインを導く、既定のAI外観の拒否、引き算のパス
-- addsumtech/slides_maker: AIらしさの兆候（視覚・文章）、リズム、独立した批評者
-- crazyykhllc-bit/CyberPPT、likaku/Mck-ppt-design-skill、zairuilab/consulting-deck: スタイルロック、数値ガードレール、機械判定ゲート、経験ログ
-- Gabberflast/academic-pptx-skill: アクションタイトル、ゴーストデッキテスト、1枚1展示
-- LearnPrompt/humanize-ppt: 聴衆の状態遷移、話者視点の点検
+## 品質確認
+
+品質確認は、利用できる能力に応じて次の証拠を積み上げます。
+
+1. `pptx_lint.py` で全ページの構造、配置、文字、パッケージ整合を検査する。
+2. `render_preview.py` で全ページ画像とコンタクトシートを生成し、個別ページとデッキ全体を確認する。
+3. 高忠実度レンダラーがある環境では、最終成果物を再描画して表示差を確認する。
+
+納品報告には、実行した検査、確認したページ数、使用した書体、検出件数、残存する要確認事項を記載します。これにより、ハーネスごとの能力差があっても確認済みの範囲を追跡できます。
+
+## 検証済みの互換基準
+
+Python 3.9、python-pptx 0.6.21、Pillow 8.3.2を互換基準とし、骨格の10原型、3本の監査ツール、23件の評価ケースで動作を確認しています。実行時に取得したライブラリの版は、再現条件としてQA結果に残します。
+
+## コレクションの保守
+
+`collections/pptx/scripts/` はコレクション全体の保守用検査です。各スキルの配布パッケージには含まれません。
+
+- `eval-checks.py`: 23件のケースでlintの検出と非検出を確認する
+- `audit-consistency.py`: 文書、骨格コード、監査ツールの数値・名称・オプションを照合する
+
+変更後はリポジトリルートで実行します。
+
+```bash
+python3 collections/pptx/scripts/eval-checks.py
+python3 collections/pptx/scripts/audit-consistency.py
+python3 -m agent_skills_marketplace validate --root collections
+python3 -m agent_skills_marketplace index --root collections --output marketplace.json
+python3 -m agent_skills_marketplace index --root collections --output marketplace.json --check
+```
+
+## 参考資料と由来
+
+設計原則と評価観点は、anthropics/skills、EveryInc/hands-on-deck、addsumtech/slides_maker、Gabberflast/academic-pptx-skill、LearnPrompt/humanize-ppt、および複数の公開PPTXスキルを調査して構成しています。このコレクションの文章とコードは日本語で独自に実装しています。
