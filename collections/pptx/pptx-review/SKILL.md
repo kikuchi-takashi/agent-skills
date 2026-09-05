@@ -2,7 +2,7 @@
 name: pptx-review
 description: "PowerPoint（.pptx）を変更せずに監査し、はみ出し・キャンバス外・書体の混在・ページ間のデザインの不統一・生成AIらしい装飾や文章・論理構成・デザインロックとの乖離を、機械検査（同梱の pptx_lint.py、標準ライブラリのみ）と描画画像の目視で判定して報告する。「このPPTをレビューして」「AIっぽくないか見て」「納品前にチェック」「デッキを監査」のとき、および pptx-create / pptx-edit の品質確認を別コンテキストで行うときに使う。修正はしない。修正は pptx-edit。"
 license: MIT
-compatibility: "Python 3.9+。lint は標準ライブラリのみ、描画は Pillow のみ。外部ツールやネットワークは不要。和文の書体ファイルがあれば字形まで描く。"
+compatibility: "Python 3.9+。lint と設計値抽出は標準ライブラリのみ、簡易描画は Pillow。和文の書体ファイルがあれば字形まで描く。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に併用する。"
 metadata:
   version: "1.1.0"
   publisher: "agent-skills"
@@ -62,6 +62,8 @@ subprocess.run([sys.executable, "scripts/render_preview.py", "deck.pptx", "--out
 
 `scripts/render_preview.py` は Pillow だけで描く簡易描画で、位置・折り返し・重なり・余白・色の配分を見るためのもの。PowerPoint と同じではない。
 
+**高忠実度レンダラー**（ハーネスが PowerPoint 互換の描画を提供する場合）があれば、簡易描画で位置と構造を確認したあと、それで再描画して表示差を見る。書体・影・図表の見え方はそちらが正になる。無ければ簡易描画までを確認範囲として報告する。
+
 - はみ出した箱は赤枠で示され、標準出力にページと図形名が出る。
 - 和文の書体が無い環境では和文が文字幅どおりの灰色バーになる。レイアウトの確認には足りるが、字形・禁則・記号の欠けは判定できない。報告に「和文は幅のみ確認」と書く。
 - 図表は値と色を簡略に描く。影・グラデーション・効果は描かない。
@@ -90,8 +92,9 @@ subprocess.run([sys.executable, "scripts/render_preview.py", "deck.pptx", "--out
 # 監査報告: <ファイル名>
 
 - 判定: 合格 / 要修正（重大 N 件、重要 N 件、軽微 N 件）
-- lint: errors N / warnings N（qa/lint.json）
-- 描画: N 枚を確認（qa/slide-*.jpg）、書体の代替: あり/なし
+- 実行した検査: lint（errors N / warnings N、qa/lint.json）、簡易描画 N 枚、高忠実度描画 あり/なし
+- 使用した書体と、描画で代替が起きたかどうか
+- 再現条件: 使用したライブラリの版
 
 ## 指摘
 | # | ページ | 図形 | 重大度 | 症状 | 修正案 |

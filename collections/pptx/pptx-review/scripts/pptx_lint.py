@@ -1024,7 +1024,7 @@ def consistency_findings(report_slides, deck_state):
         ms, n = sizes.most_common(1)[0]
         if has_majority(n):
             for r in body:
-                if r["title_size"] and abs(r["title_size"] - ms) > 1:
+                if r["title_size"] and abs(r["title_size"] - ms) > 0.5:   # 1pt の差も型スケール外れとして扱う
                     add(r["index"], "TITLE_SIZE_DRIFT", "タイトルが %.0fpt。多数派は %.0fpt" % (r["title_size"], ms))
     # 本文の左端
     lefts = Counter(r["left_x"] for r in body if r["left_x"] is not None)

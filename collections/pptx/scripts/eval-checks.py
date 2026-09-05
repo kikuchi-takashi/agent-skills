@@ -257,6 +257,24 @@ def _(g, p):
     g["text"](s, 1.3, g["BODY_Y"], 7.0, 1.4, ["本文の行。"], g["SIZE"]["body"])
 
 
+@case("タイトル29pt（1ptだけ違う）", expect=["TITLE_SIZE_DRIFT"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["text"](s, g["M"], g["TITLE_Y"], g["W"] - 2 * g["M"], g["TITLE_H"],
+              "1ptだけ違うタイトル", g["SIZE"]["title"] + 1, bold=True)
+    g["text"](s, g["M"], g["BODY_Y"], 7.0, 1.4, ["本文の行。"], g["SIZE"]["body"])
+
+
+@case("タイトル位置 0.09in の差", forbid=["TITLE_POSITION_DRIFT"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["text"](s, g["M"] + 0.09, g["TITLE_Y"], g["W"] - 2 * g["M"], g["TITLE_H"],
+              "ごく僅かに動いたタイトル", g["SIZE"]["title"], bold=True)
+    g["text"](s, g["M"], g["BODY_Y"], 7.0, 1.4, ["本文の行。"], g["SIZE"]["body"])
+
+
 def main():
     workdir = tempfile.mkdtemp(prefix="pptx-eval-")
     deck_dir = os.path.join(workdir, "deck")

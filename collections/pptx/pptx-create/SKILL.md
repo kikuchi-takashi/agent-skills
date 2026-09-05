@@ -2,7 +2,7 @@
 name: pptx-create
 description: "要件・原稿・資料から、編集可能なPowerPoint（.pptx）を新規に設計・生成する。聴衆と目的の整理、主張を一文で書くスライド構成、生成前のデザインロック、python-pptxによる生成、描画画像とlintによる品質確認までを一続きに行う。「PPTを作って」「スライドにまとめて」「プレゼン資料を作成して」「提案書をパワポで」など、新しいデッキを作るときに使う。既存デッキの修正は pptx-edit、監査だけなら pptx-review を使う。"
 license: MIT
-compatibility: "Python 3.9+ と python-pptx（lxml、Pillow、XlsxWriter を含む）。視覚確認は pptx-review 同梱の Pillow 描画で行い、外部ツールやネットワークは不要。"
+compatibility: "Python 3.9+ と python-pptx（lxml、Pillow、XlsxWriter）。着手時に利用できるライブラリを確認して経路を決める。描画確認は pptx-review 同梱の簡易描画、ハーネスが PowerPoint 互換の描画を提供する場合はそれを最終確認に使う。"
 metadata:
   version: "1.1.0"
   publisher: "agent-skills"
@@ -24,6 +24,27 @@ metadata:
 ## 工程
 
 作業ファイルは出力先の `deck/` 配下（`brief.md`、`outline.md`、`design-lock.md`、`design-lock.json`、`build.py`、`qa/`）に置く。各工程の産出物が無いまま次に進まない。
+
+### 0. 能力の確認（着手時に1回）
+
+実行環境で使えるものを確かめ、経路を決める。結果は品質確認の報告に残す。
+
+```python
+import importlib, shutil
+for name in ("pptx", "lxml", "PIL", "xlsxwriter"):
+    try:
+        m = importlib.import_module(name)
+        print("%-12s %s" % (name, getattr(m, "__version__", "available")))
+    except ImportError:
+        print("%-12s unavailable" % name)
+```
+
+| 能力 | 有るとき | 無いとき |
+|---|---|---|
+| `python-pptx`・`lxml`・`Pillow`・`XlsxWriter` | 通常どおり生成・編集する | 純 Python のもの（`python-pptx`、`XlsxWriter`）は作業ディレクトリに同梱して `sys.path` に加える。`lxml` と `Pillow` は同梱できないため、生成できないことを利用者に伝える |
+| 簡易描画（`Pillow`） | `render_preview.py` で全ページを描いて確認する | 描画確認を省き、lint と幾何の数値で確認したと報告する |
+| **高忠実度レンダラー**（ハーネスが PowerPoint 互換の描画を提供する場合） | 最終成果物を再描画し、簡易描画との表示差を確認する。書体・影・図表の見え方はこちらが正 | 簡易描画までを確認範囲として報告する |
+| 素材の読み込み・加工（PDF・Word・Excel・画像処理のライブラリ） | 元資料からの抽出や画像の加工に使う | 利用者に必要な形で素材をもらう |
 
 ### 1. ブリーフ（`deck/brief.md`）
 
@@ -53,11 +74,13 @@ metadata:
 
 図表は原則ネイティブ（`add_chart`、`add_table`）で作り、画像化しない。発表者ノートに話す内容と出典を入れる。
 
-実行環境に追加インストールやネットワークが無いことがある。必要なライブラリが無ければ、純 Python のものは同梱して `sys.path` に加える（`references/engine-notes.md` 1 節）。1回の実行に時間の上限がある環境では、生成と描画を数枚ずつに分ける。
+工程0で確認した経路に従う。素材の読み込み（PDF・Word・Excel）や画像の加工は、環境にあるライブラリを使ってよい。ただし**出力はネイティブに保つ**（図表は `add_chart`、表は `add_table`。画像化しない）。1回の実行に時間の上限がある環境では、生成と描画を数枚ずつに分ける。
 
 ### 5. 品質確認（`deck/qa/`）
 
-`references/qa.md` の3ゲート（内容・ファイル・視覚）を通す。描画は pptx-review 同梱の `render_preview.py`（Pillow のみ）で行う。**pptx-review スキルが導入済みなら、別コンテキスト（サブエージェント）で監査させる。** 無ければ `references/qa.md` のチェックリストと描画画像で自分で行うが、生成直後の自分の目は甘いので、全ページを新鮮な目で見直す。
+`references/qa.md` の3ゲート（内容・ファイル・視覚）を通す。描画は pptx-review 同梱の `render_preview.py`。**高忠実度レンダラーが使える環境では、最後にそれで再描画し、簡易描画との表示差を確認する。**
+
+**pptx-review スキルが導入済みなら、別コンテキスト（サブエージェント）で監査させる。** 無ければ `references/qa.md` のチェックリストと描画画像で自分で行うが、生成直後の自分の目は甘いので、全ページを新鮮な目で見直す。
 
 修正したら変更したページだけ再描画し、新しい指摘が出なくなるまで回す。3周して収束しなければ、残った問題を利用者に報告して判断を仰ぐ。
 
@@ -65,8 +88,11 @@ metadata:
 
 - `.pptx`（編集可能）
 - 構成の概要（各ページのタイトル一覧）
-- 置いた仮定、未確認の数値、書体の依存（受け手の環境に無い可能性）
-- 品質確認の証拠（lint の要約、描画画像の場所）
+- **実行した検査**と、確認したページ数
+- **使用した書体**と、描画で代替が起きたかどうか
+- **検出件数**（lint の errors / warnings と、意図的に残したものの理由）
+- **残存する要確認事項**（置いた仮定、裏付けの無い数値、利用者に判断してほしいこと）
+- **再現条件**（工程0で確認したライブラリの版）
 
 ## 絶対規則
 
