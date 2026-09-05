@@ -249,6 +249,26 @@ def canvas_size(pkg):
     return int(size.get("cx")) / EMU, int(size.get("cy")) / EMU
 
 
+def theme_colors(pkg):
+    """theme1.xml の配色（dk1, lt1, accent1 ...）→ HEX。"""
+    colors = {}
+    name = "ppt/theme/theme1.xml"
+    if name not in pkg.names:
+        return colors
+    scheme = pkg.xml(name).find(".//" + q("a", "clrScheme"))
+    if scheme is None:
+        return colors
+    for node in scheme:
+        key = node.tag.split("}")[-1]
+        srgb = node.find(q("a", "srgbClr"))
+        sysc = node.find(q("a", "sysClr"))
+        if srgb is not None:
+            colors[key] = srgb.get("val", "000000").upper()
+        elif sysc is not None:
+            colors[key] = sysc.get("lastClr", "000000").upper()
+    return colors
+
+
 def theme_fonts(pkg):
     name = "ppt/theme/theme1.xml"
     if name not in pkg.names:
@@ -621,7 +641,9 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
     text_shapes = [s for s in shapes if s["text"] and s["box"] is not None]
     title_shape = next((s for s in shapes if is_title(s)), None)
     if title_shape is None and text_shapes:
-        title_shape = max(text_shapes, key=lambda s: max((max(p["sizes"]) for p in s["paragraphs"] if p["sizes"]), default=0))
+        band = [s for s in text_shapes if s["box"][1] < ch * 0.30]
+        if band:
+            title_shape = max(band, key=lambda s: max((max(p["sizes"]) for p in s["paragraphs"] if p["sizes"]), default=0))
     title_text = title_shape["text"].strip() if title_shape else ""
 
     def add(code, severity, message, shape=None):
@@ -827,6 +849,38 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
         for s in shapes if s["box"] is not None
     ))
     deck_state["signatures"].append(signature)
+    containers = [s for s in shapes if s["box"] is not None and s["kind"] in ("shape", "picture", "table", "chart")
+                  and (s["filled"] or s["kind"] != "shape") and s["box"][2] * s["box"][3] < cw * ch * 0.8]
+
+    def inside_container(shape):
+        box = shape["box"]
+        return any(c is not shape and overlap_area(box, c["box"]) > box[2] * box[3] * 0.8
+                   and c["box"][2] * c["box"][3] > box[2] * box[3] * 1.05 for c in containers)
+
+    content_left = [s["box"][0] for s in shapes
+                    if s["box"] is not None and s is not title_shape
+                    and s["box"][1] > 1.0 and s["box"][1] < ch - 0.9
+                    and not (s["box"][2] >= cw * 0.95 and s["box"][3] >= ch * 0.95)
+                    and not (s["text"] and s["text"].strip().startswith(FOOTER_PREFIXES))
+                    and not inside_container(s)]
+    body_runs = Counter()
+    for s in text_shapes:
+        if s is title_shape or s["text"].strip().startswith(FOOTER_PREFIXES):
+            continue
+        for para in s["paragraphs"]:
+            if para["text"].strip() and para["sizes"]:
+                body_runs[round(max(para["sizes"]))] += len(para["text"].strip())
+    full_bleed = any(s["box"] is not None and s["filled"] and s["box"][2] >= cw * 0.95 and s["box"][3] >= ch * 0.95
+                     for s in shapes if s["kind"] == "shape")
+    content_rects = [r for r in rects if not (r["box"][2] >= cw * 0.95 and r["box"][3] >= ch * 0.95)]
+    deck_state["records"].append({
+        "index": index,
+        "title_box": tuple(round(v, 2) for v in title_box) if title_box else None,
+        "title_size": max((max(p["sizes"]) for p in title_shape["paragraphs"] if p["sizes"]), default=None) if title_shape else None,
+        "left_x": round(min(content_left), 2) if content_left else None,
+        "body_size": body_runs.most_common(1)[0][0] if body_runs else None,
+        "is_cover": full_bleed or (len(text_shapes) <= 2 and not content_rects),
+    })
     run = deck_state["signatures"][-3:]
     if len(run) == 3 and run[0] == run[1] == run[2] and len(signature) >= 2:
         add("LAYOUT_REPEATED", "warning", "同じレイアウトが3枚連続。主役（図・数字・表・文）を変える")
@@ -874,6 +928,77 @@ def chart_findings(pkg, part):
                                      "message": "%s の棒グラフに負の値があるが invertIfNegative が無い。PowerPoint 以外のビューアで負の棒が上向きに見える。系列に val=0 を明示する" % target.rsplit("/", 1)[-1]})
                     break
     return findings
+
+
+def color_distance(a, b):
+    try:
+        return sum(abs(int(a[i:i + 2], 16) - int(b[i:i + 2], 16)) for i in (0, 2, 4))
+    except ValueError:
+        return 999
+
+
+def consistency_findings(report_slides, deck_state):
+    """ページ間の統一性。多数派から外れたページに指摘を付ける（4枚以上のとき）。"""
+    records = deck_state["records"]
+    body = [r for r in records if not r["is_cover"]]
+    if len(body) < 4:
+        return
+    by_index = {s["index"]: s for s in report_slides}
+
+    def add(index, code, message, severity="warning"):
+        by_index[index]["findings"].append({"code": code, "severity": severity, "message": message})
+
+    # タイトルの位置と大きさ
+    boxes = Counter((r["title_box"][0], r["title_box"][1], r["title_box"][2]) for r in body if r["title_box"])
+    if boxes:
+        (mx, my, mw), n = boxes.most_common(1)[0]
+        if n >= max(3, len(body) // 2):
+            for r in body:
+                if r["title_box"] and (abs(r["title_box"][0] - mx) > 0.1 or abs(r["title_box"][1] - my) > 0.1 or abs(r["title_box"][2] - mw) > 0.2):
+                    add(r["index"], "TITLE_POSITION_DRIFT",
+                        "タイトルの位置・幅 (x=%.2f, y=%.2f, w=%.2f) が多数派 (x=%.2f, y=%.2f, w=%.2f) と違う" % (r["title_box"][0], r["title_box"][1], r["title_box"][2], mx, my, mw))
+    sizes = Counter(r["title_size"] for r in body if r["title_size"])
+    if sizes:
+        ms, n = sizes.most_common(1)[0]
+        if n >= max(3, len(body) // 2):
+            for r in body:
+                if r["title_size"] and abs(r["title_size"] - ms) > 1:
+                    add(r["index"], "TITLE_SIZE_DRIFT", "タイトルが %.0fpt。多数派は %.0fpt" % (r["title_size"], ms))
+    # 本文の左端
+    lefts = Counter(r["left_x"] for r in body if r["left_x"] is not None)
+    if lefts:
+        ml, n = lefts.most_common(1)[0]
+        if n >= max(3, len(body) // 2):
+            for r in body:
+                if r["left_x"] is not None and abs(r["left_x"] - ml) > 0.15:
+                    add(r["index"], "MARGIN_DRIFT", "本文の左端が x=%.2f。多数派は x=%.2f" % (r["left_x"], ml))
+    # 本文サイズ（ページごとの主たるサイズ）の多数派
+    body_sizes = Counter(r["body_size"] for r in body if r["body_size"])
+    if body_sizes:
+        mb, n = body_sizes.most_common(1)[0]
+        if n >= max(3, len(body) // 2):
+            for r in body:
+                if r["body_size"] and r["body_size"] != mb:
+                    add(r["index"], "BODY_SIZE_DRIFT", "本文が %dpt。多数派は %dpt" % (r["body_size"], mb))
+    # 色の語彙（2ページ以上で使われる色）
+    # 色: 既存の色に「近いが違う」色だけを指摘する（明確に別の色は強調の意図とみなす）
+    body_indexes = set(r["index"] for r in body)
+    color_pages = Counter(c for cs in deck_state["slide_colors"] for c in cs)
+    palette = [c for c, n in color_pages.items() if n >= 2 and len(c) == 6]
+    if palette:
+        for i, cs in enumerate(deck_state["slide_colors"], start=1):
+            if i not in body_indexes:
+                continue
+            near = []
+            for c in sorted(cs):
+                if not c or len(c) != 6 or c in palette:
+                    continue
+                closest = min(palette, key=lambda p: color_distance(c, p))
+                if color_distance(c, closest) <= 40:
+                    near.append((c, closest))
+            if near:
+                add(i, "PALETTE_DRIFT",
+                    "色 %s が既存の %s に近いが違う。同じ色にそろえる" % (", ".join(a for a, _ in near), ", ".join(b for _, b in near)))
 
 
 def package_findings(pkg, slides):
@@ -962,6 +1087,7 @@ def main(argv=None):
     parser.add_argument("--json-out", help="JSON レポートの書き出し先")
     parser.add_argument("--baseline", help="編集前のレポート JSON。そこにある指摘は inherited として判定から除く")
     parser.add_argument("--font", help="折り返し計測に使う書体ファイル（.ttf/.otf）。省略時は和文対応の書体を探す")
+    parser.add_argument("--no-consistency", action="store_true", help="ページ間の統一性検査（タイトル位置・左端・サイズ・色の乖離）を行わない")
     parser.add_argument("--strict", action="store_true", help="warning も失敗扱い")
     args = parser.parse_args(argv)
 
@@ -987,7 +1113,7 @@ def main(argv=None):
     MEASURER.__init__(font_path if (_ImageFont and font_path) else None)
     canvas = canvas_size(pkg)
     slides = slide_order(pkg)
-    deck_state = {"fonts": set(), "signatures": [], "colors": Counter()}
+    deck_state = {"fonts": set(), "signatures": [], "colors": Counter(), "records": [], "slide_colors": []}
     report_slides = []
     deck_findings = package_findings(pkg, slides)
     for index, part in enumerate(slides, start=1):
@@ -1005,11 +1131,15 @@ def main(argv=None):
         layout_pos = placeholder_positions(pkg, layout) if layout else {}
         master_pos = placeholder_positions(pkg, master) if master else {}
         shapes = collect_shapes(pkg, part, layout_pos, master_pos)
-        deck_state["colors"].update(slide_colors(pkg, part))
+        colors_here = slide_colors(pkg, part)
+        deck_state["colors"].update(colors_here)
+        deck_state["slide_colors"].append(set(colors_here))
         slide_report = lint_slide(index, shapes, canvas, args, lock, deck_state, notes_present(pkg, part))
         slide_report["findings"].extend(chart_findings(pkg, part))
         report_slides.append(slide_report)
 
+    if not args.no_consistency:
+        consistency_findings(report_slides, deck_state)
     fonts = sorted(deck_state["fonts"])
     if len(fonts) > 3:
         deck_findings.append({"code": "MIXED_FONTS", "severity": "warning",

@@ -75,17 +75,17 @@
     {
       "id": "pptx-edit",
       "name": "pptx-edit",
-      "description": "既存のPowerPoint（.pptx/.potx）を、元のデザインシステム（テーマ色・書体・レイアウト）を壊さずに編集する。文言の差替、スライドの追加・削除・並べ替え、テンプレへの流し込み、図表データの更新、生成AIっぽい装飾の除去、体裁の修正に使う。「このPPTを直して」「スライド3を修正」「テンプレに流し込んで」「AIっぽさを消して」など、既存ファイルがあるときに使う。新規作成は pptx-create、監査だけなら pptx-review。",
+      "description": "既存のPowerPoint（.pptx/.potx）を、元のデザインに揃えたまま編集する。設計値を機械的に抽出し、既存要素を複製して作ることで、修正したページだけ浮くことを防ぐ。文言の差替、スライドの追加・削除・並べ替え、テンプレへの流し込み、図表データの更新、生成AIっぽい装飾の除去、体裁の修正に使う。「このPPTを直して」「スライド3を修正」「テンプレに流し込んで」「AIっぽさを消して」など、既存ファイルがあるときに使う。新規作成は pptx-create、監査だけなら pptx-review。",
       "collection": "pptx",
       "path": "pptx/pptx-edit",
       "license": "MIT",
-      "compatibility": "Python 3.9+ と python-pptx（lxml、Pillow を含む）。構造変更は zipfile と XML 編集。視覚確認は pptx-review 同梱の Pillow 描画。外部ツールやネットワークは不要。",
+      "compatibility": "Python 3.9+ と python-pptx（lxml、Pillow を含む）。構造変更は zipfile と XML 編集。設計値の抽出・検査・描画は pptx-review 同梱のスクリプト。外部ツールやネットワークは不要。",
       "version": "1.1.0"
     },
     {
       "id": "pptx-review",
       "name": "pptx-review",
-      "description": "PowerPoint（.pptx）を変更せずに監査し、はみ出し・キャンバス外・書体の混在・生成AIらしい装飾や文章・論理構成・デザインロックとの乖離を、機械検査（同梱の pptx_lint.py、標準ライブラリのみ）と描画画像の目視で判定して報告する。「このPPTをレビューして」「AIっぽくないか見て」「納品前にチェック」「デッキを監査」のとき、および pptx-create / pptx-edit の品質確認を別コンテキストで行うときに使う。修正はしない。修正は pptx-edit。",
+      "description": "PowerPoint（.pptx）を変更せずに監査し、はみ出し・キャンバス外・書体の混在・ページ間のデザインの不統一・生成AIらしい装飾や文章・論理構成・デザインロックとの乖離を、機械検査（同梱の pptx_lint.py、標準ライブラリのみ）と描画画像の目視で判定して報告する。「このPPTをレビューして」「AIっぽくないか見て」「納品前にチェック」「デッキを監査」のとき、および pptx-create / pptx-edit の品質確認を別コンテキストで行うときに使う。修正はしない。修正は pptx-edit。",
       "collection": "pptx",
       "path": "pptx/pptx-review",
       "license": "MIT",

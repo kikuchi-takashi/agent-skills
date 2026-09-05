@@ -1,8 +1,8 @@
 ---
 name: pptx-edit
-description: "既存のPowerPoint（.pptx/.potx）を、元のデザインシステム（テーマ色・書体・レイアウト）を壊さずに編集する。文言の差替、スライドの追加・削除・並べ替え、テンプレへの流し込み、図表データの更新、生成AIっぽい装飾の除去、体裁の修正に使う。「このPPTを直して」「スライド3を修正」「テンプレに流し込んで」「AIっぽさを消して」など、既存ファイルがあるときに使う。新規作成は pptx-create、監査だけなら pptx-review。"
+description: "既存のPowerPoint（.pptx/.potx）を、元のデザインに揃えたまま編集する。設計値を機械的に抽出し、既存要素を複製して作ることで、修正したページだけ浮くことを防ぐ。文言の差替、スライドの追加・削除・並べ替え、テンプレへの流し込み、図表データの更新、生成AIっぽい装飾の除去、体裁の修正に使う。「このPPTを直して」「スライド3を修正」「テンプレに流し込んで」「AIっぽさを消して」など、既存ファイルがあるときに使う。新規作成は pptx-create、監査だけなら pptx-review。"
 license: MIT
-compatibility: "Python 3.9+ と python-pptx（lxml、Pillow を含む）。構造変更は zipfile と XML 編集。視覚確認は pptx-review 同梱の Pillow 描画。外部ツールやネットワークは不要。"
+compatibility: "Python 3.9+ と python-pptx（lxml、Pillow を含む）。構造変更は zipfile と XML 編集。設計値の抽出・検査・描画は pptx-review 同梱のスクリプト。外部ツールやネットワークは不要。"
 metadata:
   version: "1.1.0"
   publisher: "agent-skills"
@@ -24,7 +24,7 @@ metadata:
 
 - 全ページを描画し（pptx-review の `render_preview.py --sheet`）、一覧を見る。
 - テキストを書き出す（pptx-create の `qa.md` と同じ python-pptx の短いスクリプト）。
-- デザインシステムを抽出して `deck/design-lock.md` に書く: `ppt/theme/theme1.xml` の配色と書体、使われているレイアウト名、本文とタイトルの実サイズ（スライド上の実値。テーマと違うことがある）。
+- **設計値を機械的に抽出する**（目分量で読み取らない）。pptx-review の `extract_style.py` に `--json-out deck/design-lock.json --md-out deck/design-lock.md` を渡す。タイトルの位置・サイズ・色、本文の左端とサイズの語彙、出典の位置、余白、書体、色、そして役割ごとの複製元が出る。手順は `references/match-existing-design.md`。
 - pptx-review スキルが導入されていれば lint を通し、元の状態の指摘を `deck/before/lint.json` に残す。元から壊れていた箇所と、自分が壊した箇所を区別するため。
 
 ### 2. 変更範囲（`deck/changes.md`）
@@ -52,6 +52,8 @@ metadata:
 
 ### 4. 編集
 
+**新しい要素は既存要素の複製から作る。** `design-lock.md` の複製元を `copy.deepcopy` で写し、位置と文言だけ変える。ゼロから `add_textbox` すると PowerPoint の既定書式（Calibri 18pt 黒、行間 1.0）になり、そのページだけ浮く。ページを足すときも、同じ役割の既存ページを複製してから中身を差し替える。詳細は `references/match-existing-design.md`。
+
 - スクリプト（`deck/edit.py`）で行い、手作業の XML 編集は最小限にする。同じ編集を再実行できる状態にしておく。
 - 文言を差し替えるときは、元と同程度の長さにする。長くなるなら箱の大きさを見直すか、文を削る。縮小しない。
 - テンプレ流し込みで枠が余ったら（4人分の枠に3人）、余った枠は画像・文字ごと削除する。文字だけ消して枠を残さない。
@@ -61,7 +63,9 @@ metadata:
 ### 5. 品質確認（`deck/qa/`）
 
 - 再オープン検査: Python で `Presentation("deck/output.pptx")` を開く。例外が出れば壊れている。
-- pptx-review があれば `--baseline deck/before/lint.json` を付けて lint を通し、**新しく増えた指摘**を 0 にする。元からある指摘は `inherited` として集計され、報告に書く。
+- pptx-review があれば `--lock deck/design-lock.json --baseline deck/before/lint.json` を付けて lint を通し、**新しく増えた指摘**を 0 にする。元からある指摘は `inherited` として集計され、報告に書く。
+- **統一性の指摘**（`TITLE_POSITION_DRIFT`、`TITLE_SIZE_DRIFT`、`MARGIN_DRIFT`、`BODY_SIZE_DRIFT`、`PALETTE_DRIFT`）が自分の触ったページに出ていたら、必ず直す。これが「修正したページだけデザインが違う」の直接の検出である。
+- 描画の一覧（`render_preview.py --sheet`）で、触ったページが他と同じ骨格に見えるかを確かめる。1枚ずつ見ると気づかない。
 - 触ったページを描画して1枚ずつ見る。加えて全体を一覧し、他のページとの整合（タイトル位置、余白、フッター）を確認する。
 - テキストを再度書き出し、変更前との差分が `deck/changes.md` の範囲に収まっていることを確認する。
 
@@ -78,6 +82,7 @@ metadata:
 - 元ファイルを上書きしない。
 - 図表や数値の意味を変えない。変えるなら利用者の指示を引用する。
 - テーマに無い色・書体を足さない。
+- 新しい要素は複製から作る。空の図形に書式を手で設定しない。
 - 構造変更（追加・削除・並べ替え）を先に、内容変更を後に。
 - 描画画像を見ずに完了と言わない。
 

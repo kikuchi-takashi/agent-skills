@@ -43,25 +43,6 @@ GREEK = (150, 150, 150)
 
 # ---------------------------------------------------------------- 色
 
-def theme_colors(pkg):
-    colors = {}
-    name = "ppt/theme/theme1.xml"
-    if name not in pkg.names:
-        return colors
-    scheme = pkg.xml(name).find(".//" + L.q("a", "clrScheme"))
-    if scheme is None:
-        return colors
-    for node in scheme:
-        key = node.tag.split("}")[-1]
-        srgb = node.find(L.q("a", "srgbClr"))
-        sysc = node.find(L.q("a", "sysClr"))
-        if srgb is not None:
-            colors[key] = srgb.get("val", "000000").upper()
-        elif sysc is not None:
-            colors[key] = sysc.get("lastClr", "000000").upper()
-    return colors
-
-
 def hex_rgb(value):
     value = value.lstrip("#")
     return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
@@ -139,7 +120,7 @@ class Renderer(object):
         self.pkg = pkg
         self.scale = float(scale)
         self.fonts = fonts
-        self.theme = theme_colors(pkg)
+        self.theme = L.theme_colors(pkg)
         self.cw, self.ch = L.canvas_size(pkg)
         self.overflows = []
 

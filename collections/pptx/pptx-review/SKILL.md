@@ -1,6 +1,6 @@
 ---
 name: pptx-review
-description: "PowerPoint（.pptx）を変更せずに監査し、はみ出し・キャンバス外・書体の混在・生成AIらしい装飾や文章・論理構成・デザインロックとの乖離を、機械検査（同梱の pptx_lint.py、標準ライブラリのみ）と描画画像の目視で判定して報告する。「このPPTをレビューして」「AIっぽくないか見て」「納品前にチェック」「デッキを監査」のとき、および pptx-create / pptx-edit の品質確認を別コンテキストで行うときに使う。修正はしない。修正は pptx-edit。"
+description: "PowerPoint（.pptx）を変更せずに監査し、はみ出し・キャンバス外・書体の混在・ページ間のデザインの不統一・生成AIらしい装飾や文章・論理構成・デザインロックとの乖離を、機械検査（同梱の pptx_lint.py、標準ライブラリのみ）と描画画像の目視で判定して報告する。「このPPTをレビューして」「AIっぽくないか見て」「納品前にチェック」「デッキを監査」のとき、および pptx-create / pptx-edit の品質確認を別コンテキストで行うときに使う。修正はしない。修正は pptx-edit。"
 license: MIT
 compatibility: "Python 3.9+。lint は標準ライブラリのみ、描画は Pillow のみ。外部ツールやネットワークは不要。和文の書体ファイルがあれば字形まで描く。"
 metadata:
@@ -25,6 +25,16 @@ metadata:
 
 ## 手順
 
+### 0. 設計値の抽出（既存デッキの監査、または編集の前）
+
+```python
+import subprocess, sys
+subprocess.run([sys.executable, "scripts/extract_style.py", "deck.pptx",
+                "--json-out", "qa/design-lock.json", "--md-out", "qa/design-lock.md"])
+```
+
+タイトルの位置・サイズ・色、本文の左端とサイズ、出典の位置、余白、書体、色、複製元を実測して書き出す。ロックが与えられていない監査では、これを「そのデッキ自身の正」として使い、次の機械検査に `--lock qa/design-lock.json` で渡す。
+
 ### 1. 機械検査
 
 ```python
@@ -39,6 +49,7 @@ subprocess.run([sys.executable, "scripts/pptx_lint.py", "deck.pptx", "--mode", "
 - Pillow と和文の書体があれば折り返しを実測し（要約に `measured with ...`）、無ければ概算（`estimated`）。書体は `--font` で指定できる。
 - `design-lock.json` の `allow` に登録された指摘は「意図的」として判定から外れる。登録の理由が妥当かは目視で確認する。
 - 検査項目と重大度は `references/review-rubric.md`。
+- 4枚以上のデッキでは、ページ間の統一性（タイトルの位置と大きさ、本文の左端、本文サイズ、色）を多数派と比べ、外れたページに `*_DRIFT` を出す。`--no-consistency` で切れる。
 - lint は発見器であり、判定器ではない。`passed: true` でも視覚の確認は省略しない。逆に warning は文脈で意図的なものがあり得るので、1件ずつ理由を確認する。
 
 ### 2. 描画
