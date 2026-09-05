@@ -100,20 +100,27 @@ def check_guardrails(consts, _scales):
 
 
 def check_flags():
-    known = {"--sheet", "--slides", "--scale", "--font", "--out", "--json-out", "--md-out", "--help"}
-    helps = {}
-    for script in ("pptx_lint.py", "render_preview.py", "extract_style.py"):
+    """このコレクションのスクリプトに渡しているフラグが実在するかを見る。
+    外部コマンド（描画に使う実行ファイルなど）のフラグは対象外。"""
+    scripts = ("pptx_lint.py", "render_preview.py", "extract_style.py")
+    every = {"--help"}
+    for script in scripts:
         out = subprocess.run([sys.executable, str(REVIEW / "scripts" / script), "--help"],
                              capture_output=True, text=True).stdout
-        helps[script] = set(re.findall(r"(--[a-z-]+)", out))
-    every = set().union(*helps.values()) | known
+        every |= set(re.findall(r"(--[a-z-]+)", out))
     docs = [CREATE / "qa.md", REVIEW / "SKILL.md", ROOT / "pptx-edit" / "SKILL.md",
             ROOT / "pptx-edit" / "references" / "match-existing-design.md",
-            CREATE / "engine-notes.md", CREATE / "typography-ja.md"]
+            CREATE / "engine-notes.md", CREATE / "typography-ja.md",
+            ROOT / "pptx-create" / "SKILL.md"]
     for doc in docs:
         text = doc.read_text()
-        used = set(re.findall(r'"(--[a-z-]+)"', text)) | set("--" + x for x in re.findall(r"`--([a-z-]+)`", text))
-        for flag in used - every:
+        used = set()
+        for block in re.findall(r"```(?:python|bash)?\n(.*?)```", text, re.S):
+            if not any(name in block for name in scripts):
+                continue                                  # 外部コマンドだけの塊は見ない
+            used |= set(re.findall(r'"(--[a-z-]+)"', block))
+        used |= set("--" + x for x in re.findall(r"`--([a-z-]+)`", text))
+        for flag in sorted(used - every):
             note("%s が存在しないフラグ %s を使っている" % (doc.name, flag))
 
 

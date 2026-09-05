@@ -39,6 +39,7 @@
 | AI_VOCAB | 重要 | 誇張・抽象語彙 |
 | TITLE_TOPIC_LABEL | 重要 | 話題ラベル型タイトル（表紙・目次・章扉は除外して判断） |
 | TITLE_TOO_LONG | 重要 | タイトルが全角36字超（予算は30字） |
+| TITLE_ORPHAN_LINE | 重要 | 折り返したタイトルの最終行が全角3文字未満。1文字だけ落ちた見出しは雑に見える |
 | TEXT_DENSE | 重要 | 1枚の文字量が上限超 |
 | LAYOUT_REPEATED | 重要 | 同一レイアウトが3枚連続 |
 | LAYOUT_MONOTONE | 重要 | 同一レイアウトが本文の50%超 |

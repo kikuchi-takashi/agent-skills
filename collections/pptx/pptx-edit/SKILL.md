@@ -70,7 +70,7 @@ pptx-create の工程0と同じ表で経路を決める。`python-pptx` が無�
 - pptx-review があれば `--lock deck/design-lock.json --baseline deck/before/lint.json` を付けて lint を通し、**新しく増えた指摘**を 0 にする。元からある指摘は `inherited` として集計され、報告に書く。
 - **統一性の指摘**（`TITLE_POSITION_DRIFT`、`TITLE_SIZE_DRIFT`、`MARGIN_DRIFT`、`BODY_SIZE_DRIFT`、`PALETTE_DRIFT`）が自分の触ったページに出ていたら、必ず直す。これが「修正したページだけデザインが違う」の直接の検出である。
 - 描画の一覧（`render_preview.py --sheet`）で、触ったページが他と同じ骨格に見えるかを確かめる。1枚ずつ見ると気づかない。
-- 触ったページを描画して1枚ずつ見る。加えて全体を一覧し、他のページとの整合（タイトル位置、余白、フッター）を確認する。高忠実度レンダラーが使える環境では、最後にそれで再描画して表示差を確認する。
+- 触ったページを描画して1枚ずつ見る。加えて全体を一覧し、他のページとの整合（タイトル位置、余白、フッター）を確認する。高忠実度の描画が使えるときの追加確認は pptx-create の `references/qa.md` ゲート3にある。
 - テキストを再度書き出し、変更前との差分が `deck/changes.md` の範囲に収まっていることを確認する。
 
 ### 6. 報告

@@ -853,6 +853,30 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
     hits = [term for term in AI_VOCAB if term in all_text]
     if hits:
         add("AI_VOCAB", "warning", "誇張・抽象語彙: %s。具体的な事実や数値に置き換える" % ", ".join(hits[:8]))
+    if title_text and title_shape and title_shape["box"]:
+        # 折り返した最終行が極端に短いと、1文字だけ落ちた見出しになる
+        body_pr = title_shape["body_pr"]
+        if not (body_pr is not None and body_pr.get("wrap") == "none"):
+            insets = body_insets(body_pr)
+            inner_w = max(title_shape["box"][2] - insets["l"] - insets["r"], 0.1) * 72.0
+            size = max((max(p["sizes"]) for p in title_shape["paragraphs"] if p["sizes"]), default=0)
+            if size:
+                for para in title_shape["paragraphs"]:
+                    text = para["text"].strip()
+                    if not text or MEASURER.width(text, size) <= inner_w:
+                        continue
+                    line, last = "", ""
+                    for char in text:                       # ch はキャンバス高さなので使わない
+                        if MEASURER.width(line + char, size) > inner_w and line:
+                            last, line = line, char
+                        else:
+                            line += char
+                    tail = fullwidth_len(line)
+                    if last and tail < 3:
+                        add("TITLE_ORPHAN_LINE", "warning",
+                            "タイトルの最終行が全角%.0f文字分しかない（「%s」）。言い換えて行を整える" % (tail, line[:8]), title_shape)
+                    break
+
     if title_text:
         lowered = title_text.strip().lower().rstrip("。.")
         if lowered in TOPIC_LABEL_TITLES or lowered.endswith(TOPIC_LABEL_SUFFIXES):

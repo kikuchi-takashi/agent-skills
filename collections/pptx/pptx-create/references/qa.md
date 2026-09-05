@@ -69,7 +69,38 @@ subprocess.run([sys.executable, "<skills>/pptx-review/scripts/pptx_lint.py", "de
 
 描画は Pillow による簡易描画で、PowerPoint と同じではない。和文の書体が無い環境では和文が灰色バーになるが、位置・折り返し・重なり・余白の確認には足りる。赤枠が付いたページは、はみ出しが実測で出ている。
 
-**高忠実度レンダラーが使える環境では、簡易描画で位置と構造を直したあと、最後にそれで再描画する。** 書体の実寸、影、図表の見え方はそちらが正で、簡易描画との差が出たら実物側に合わせる。使わなかった場合は、確認範囲が簡易描画までであることを報告に書く。
+### 高忠実度の描画（使えるときだけ、最後に1回）
+
+簡易描画で位置と構造を直し終えたあとに行う。書体の実寸・影・図表の見え方はこちらが正で、差が出たら実物側に合わせる。
+
+```python
+import os, shutil, subprocess
+
+soffice = shutil.which("soffice") or shutil.which("libreoffice")
+if soffice and shutil.which("pdftoppm"):
+    os.makedirs("deck/qa/hifi", exist_ok=True)
+    subprocess.run([soffice, "--headless", "--convert-to", "pdf",
+                    "--outdir", "deck/qa/hifi", "deck/output.pptx"], check=True, timeout=300)
+    for f in os.listdir("deck/qa/hifi"):          # 前回の画像を消す
+        if f.endswith(".png"):
+            os.remove(os.path.join("deck/qa/hifi", f))
+    subprocess.run(["pdftoppm", "-png", "-r", "110",
+                    "deck/qa/hifi/output.pdf", "deck/qa/hifi/slide"], check=True, timeout=300)
+    print(sorted(f for f in os.listdir("deck/qa/hifi") if f.endswith(".png")))
+else:
+    print("高忠実度の描画は使えない（探したが無かった）")
+```
+
+実行ファイルが無くても、**ハーネス自身が PowerPoint を画像にする手段を持っていればそれを使う**。自分が呼べるツールの一覧で判断する。
+
+見るのは、簡易描画では分からない次の点に絞る。
+
+- 和文の字形と実寸（禁則、記号の欠け、指定書体が代替されたか）
+- 影・グラデーション・効果の見え方
+- 図表の実際の描画（軸ラベルの重なり、凡例の位置、負の値の向き）
+- 簡易描画で「ぎりぎり」だった箇所が本当に収まっているか
+
+**どちらの経路も使えなかった場合は、確認範囲が簡易描画までであることを報告に書く。**「探したが無かった」と「探していない」は違う。
 
 pptx-review が導入されていない場合の代替は、幾何の表である。各図形の位置・大きさ・文字数・サイズを書き出し、キャンバス外、重なり、箱に対する文字量を数値で確かめる。画像より見落としやすいので、pptx-review の導入を利用者に勧める。
 

@@ -31,19 +31,27 @@ metadata:
 
 ```python
 import importlib, shutil
+
 for name in ("pptx", "lxml", "PIL", "xlsxwriter"):
     try:
         m = importlib.import_module(name)
         print("%-12s %s" % (name, getattr(m, "__version__", "available")))
     except ImportError:
         print("%-12s unavailable" % name)
+
+# 高忠実度の描画に使える実行ファイルを探す（両方そろって初めて使える）
+soffice = shutil.which("soffice") or shutil.which("libreoffice")
+print("%-12s %s" % ("soffice", soffice or "unavailable"))
+print("%-12s %s" % ("pdftoppm", shutil.which("pdftoppm") or "unavailable"))
 ```
+
+上のどちらかが `unavailable` でも、**ハーネス自身が PowerPoint を画像にする手段を持っていればそれを使います**（自分が呼べるツールの一覧で判断する）。どちらも無ければ「探したが無かった」と報告に書きます。
 
 | 能力 | 有るとき | 無いとき |
 |---|---|---|
 | `python-pptx`・`lxml`・`Pillow`・`XlsxWriter` | 通常どおり生成・編集する | 純 Python のもの（`python-pptx`、`XlsxWriter`）は作業ディレクトリに同梱して `sys.path` に加える。`lxml` と `Pillow` は同梱できないため、生成できないことを利用者に伝える |
 | 簡易描画（`Pillow`） | `render_preview.py` で全ページを描いて確認する | 描画確認を省き、lint と幾何の数値で確認したと報告する |
-| **高忠実度レンダラー**（ハーネスが PowerPoint 互換の描画を提供する場合） | 最終成果物を再描画し、簡易描画との表示差を確認する。書体・影・図表の見え方はこちらが正 | 簡易描画までを確認範囲として報告する |
+| **高忠実度の描画**（`soffice` と `pdftoppm` がそろう、またはハーネスが同等の手段を持つ） | 最終成果物を再描画し、簡易描画との表示差を確認する。手順は `references/qa.md` ゲート3 | 「探したが無かった」と記録し、簡易描画までを確認範囲として報告する |
 | 素材の読み込み・加工（PDF・Word・Excel・画像処理のライブラリ） | 元資料からの抽出や画像の加工に使う | 利用者に必要な形で素材をもらう |
 
 ### 1. ブリーフ（`deck/brief.md`）
@@ -78,7 +86,7 @@ for name in ("pptx", "lxml", "PIL", "xlsxwriter"):
 
 ### 5. 品質確認（`deck/qa/`）
 
-`references/qa.md` の3ゲート（内容・ファイル・視覚）を通す。描画は pptx-review 同梱の `render_preview.py`。**高忠実度レンダラーが使える環境では、最後にそれで再描画し、簡易描画との表示差を確認する。**
+`references/qa.md` の3ゲート（内容・ファイル・視覚）を通す。描画の手順と、高忠実度の描画が使えるときの追加確認はゲート3にある。
 
 **pptx-review スキルが導入済みなら、別コンテキスト（サブエージェント）で監査させる。** 無ければ `references/qa.md` のチェックリストと描画画像で自分で行うが、生成直後の自分の目は甘いので、全ページを新鮮な目で見直す。
 

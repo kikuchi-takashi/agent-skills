@@ -275,6 +275,28 @@ def _(g, p):
     g["text"](s, g["M"], g["BODY_Y"], 7.0, 1.4, ["本文の行。"], g["SIZE"]["body"])
 
 
+# 折り返しが確実に起きるよう、幅を狭めたタイトル枠で試す（1行あたり約10文字）
+_NARROW = 4.0
+
+
+@case("タイトルの最終行が1文字", expect=["TITLE_ORPHAN_LINE"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["text"](s, g["M"], g["TITLE_Y"], _NARROW, g["TITLE_H"],
+              "一次対応の負荷が固定費として定着しつつあるこ", g["SIZE"]["title"], bold=True)
+    g["text"](s, g["M"], g["BODY_Y"], 7.0, 1.4, ["本文の行。"], g["SIZE"]["body"])
+
+
+@case("折り返すが最終行は十分長い", forbid=["TITLE_ORPHAN_LINE"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["text"](s, g["M"], g["TITLE_Y"], _NARROW, g["TITLE_H"],
+              "一次対応の負荷が固定費として定着している", g["SIZE"]["title"], bold=True)
+    g["text"](s, g["M"], g["BODY_Y"], 7.0, 1.4, ["本文の行。"], g["SIZE"]["body"])
+
+
 def main():
     workdir = tempfile.mkdtemp(prefix="pptx-eval-")
     deck_dir = os.path.join(workdir, "deck")
