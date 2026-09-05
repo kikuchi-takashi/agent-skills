@@ -21,6 +21,7 @@ subprocess.run([sys.executable, "<skills>/pptx-review/scripts/extract_style.py",
 ```python
 import copy
 from pptx import Presentation
+from pptx.util import Inches
 
 prs = Presentation("deck.pptx")
 donor = next(sh for sh in prs.slides[2].shapes if sh.name == "本文 3")   # design-lock.md の複製元
@@ -29,7 +30,11 @@ new_el = copy.deepcopy(donor._element)
 target.shapes._spTree.append(new_el)
 # 位置だけ変え、書式は触らない
 new_shape = target.shapes[-1]
-new_shape.top = donor.top + donor.height + 274320                        # 0.3in
+# 複製元の位置も一緒に写るので、必ず置き直す。書式（書体・サイズ・色・行間）だけを引き継ぐ。
+new_shape.left = Inches(0.6)                                             # design-lock.md の本文左端
+new_shape.top = Inches(2.2)                                              # design-lock.md の本文開始
+new_shape.width = Inches(12.13)
+new_shape.height = Inches((3 + 0.5) * 16 * 1.4 / 72)                     # (行数+0.5) × サイズ × 行間 ÷ 72
 for para in new_shape.text_frame.paragraphs:
     if para.runs:
         para.runs[0].text = "新しい文言"
@@ -37,7 +42,7 @@ for para in new_shape.text_frame.paragraphs:
             r.text = ""
 ```
 
-複製すれば、書体・サイズ・色・行間・箇条書き記号・余白がすべて既存のまま引き継がれる。ゼロから `add_textbox` すると、PowerPoint の既定値（Calibri 18pt 黒、行間 1.0）になり、それが「浮いた」ページの正体になる。
+複製すれば、書体・サイズ・色・行間・箇条書き記号・余白がすべて既存のまま引き継がれる。**位置と大きさは引き継がない。** 複製元の座標と箱の大きさも一緒に写るので、`design-lock.md` の値で置き直す。忘れると lint に `MARGIN_DRIFT`（位置）や `TEXT_OVERFLOW_LIKELY`（高さ不足）が出る。ゼロから `add_textbox` すると、PowerPoint の既定値（Calibri 18pt 黒、行間 1.0）になり、それが「浮いた」ページの正体になる。
 
 **複製できないときだけ**、`design-lock.md` の値を明示的に指定して作る。その場合も値は文書から写す。
 

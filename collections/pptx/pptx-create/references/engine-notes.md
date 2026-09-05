@@ -41,8 +41,17 @@ W, H = 13.333, 7.5
 M = 0.6                     # 余白
 COL_W = (W - 2 * M - 0.25 * 11) / 12
 TITLE_Y, TITLE_H, BODY_Y, BODY_END, FOOT_Y = 0.6, 1.4, 2.2, 6.6, 6.8
-SIZE = {"cover": 44, "title": 28, "h2": 20, "body": 16, "note": 12, "source": 10}
 GAP = 0.3                   # 要素間の最小間隔
+
+# 密度モード。design-lock.md の型スケールに対応する。ブリーフで決めた方を選ぶ。
+#   talk = 講演型（話者が語る。文字は大きく、枚数は多め）
+#   doc  = 資料型（読んで完結する。文字は小さく、枚数は少なめ）
+MODE = "doc"
+SCALE = {
+    "talk": {"cover": 44, "title": 30, "h2": 20, "body": 20, "note": 14, "source": 11},
+    "doc":  {"cover": 38, "title": 28, "h2": 16, "body": 16, "note": 12, "source": 10},
+}
+SIZE = SCALE[MODE]
 
 
 def col(start, span):
@@ -67,6 +76,85 @@ def spread(n, x, total_w, gap=GAP):
 def content_band(top=BODY_Y, bottom=BODY_END):
     """本文の安全領域 (x, y, 幅, 高さ)。タイトル下からフッター上まで。"""
     return (M, top, W - 2 * M, bottom - top)
+
+
+def split(weights, x=M, total_w=None, gap=GAP):
+    """比率で横に割る。(1, 2) なら 1/3 と 2/3。非対称は手置きではなく比率で作る。"""
+    total_w = (W - 2 * M) if total_w is None else total_w
+    usable = total_w - gap * (len(weights) - 1)
+    unit = usable / float(sum(weights))
+    out, cx = [], x
+    for wgt in weights:
+        cw_ = unit * wgt
+        out.append((cx, cw_))
+        cx += cw_ + gap
+    return out
+
+
+def bleed(side="right", frac=0.5):
+    """裁ち落とし領域 (x, y, 幅, 高さ)。写真や一色面を端まで出すときに使う。"""
+    if side in ("left", "right"):
+        w = W * frac
+        return (0 if side == "left" else W - w, 0, w, H)
+    h = H * frac
+    return (0, 0 if side == "top" else H - h, W, h)
+
+
+def skeleton(kind):
+    """ページ構造の名前 → 領域の辞書。レイアウトは archetype から選ぶ（手置きしない）。
+
+    使える kind: cover / divider / claim-evidence / split-asymmetric / comparison /
+                 statement / hero-number / table / steps / closing
+    """
+    band_x, band_y, band_w, band_h = content_band()
+    if kind == "cover":
+        return {"canvas": (0, 0, W, H), "title": (0.8, 2.3, W - 1.6, text_height(2, SIZE["cover"])),
+                "meta": (0.8, 4.7, W - 1.6, 0.5)}
+    if kind == "divider":
+        num_h = text_height(1, 84, slack_lines=0)
+        return {"canvas": (0, 0, W, H), "number": (0.8, 1.6, 4.0, num_h),
+                "lead": (0.8, 1.6 + num_h + 0.3, W - 1.6, text_height(1, 32))}
+    if kind == "claim-evidence":
+        left, right = split((7, 5))
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "exhibit": (left[0], band_y, left[1], band_h),
+                "reading": (right[0], band_y, right[1], band_h),
+                "source": (M, FOOT_Y, 9.0, 0.35)}
+    if kind == "split-asymmetric":
+        narrow, wide = split((1, 2))
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "aside": (narrow[0], band_y, narrow[1], band_h),
+                "main": (wide[0], band_y, wide[1], band_h),
+                "source": (M, FOOT_Y, 9.0, 0.35)}
+    if kind == "comparison":
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "columns": [(x, band_y, w, band_h) for x, w in split((1, 1), gap=0.4)],
+                "source": (M, FOOT_Y, 9.0, 0.35)}
+    if kind == "statement":
+        return {"line": (1.8, 2.6, W - 3.6, 2.0)}
+    if kind == "hero-number":
+        left, right = split((5, 7))
+        num_h = text_height(1, 84, slack_lines=0)
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "number": (left[0], band_y + 0.3, left[1], num_h),
+                "caption": (left[0], band_y + 0.3 + num_h + 0.3, left[1], 0.5),
+                "context": (right[0], band_y + 0.3, right[1], num_h),
+                "source": (M, FOOT_Y, 9.0, 0.35)}
+    if kind == "table":
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "table": (band_x, band_y, band_w, band_h - 1.6),
+                "reading": (band_x, band_y + band_h - 1.4, band_w, 1.0),
+                "source": (M, FOOT_Y, 9.0, 0.35)}
+    if kind == "steps":
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "rows": [(M, y, band_w, text_height(1, SIZE["h2"])) for y in
+                         vstack([text_height(1, SIZE["h2"])] * 4, top=band_y)]}
+    if kind == "closing":
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "asks": (band_x, band_y, band_w, 2.4),
+                "risks": (band_x, band_y + 2.8, band_w, 1.4),
+                "contact": (M, FOOT_Y, 9.0, 0.35)}
+    raise ValueError("未知のページ構造: %s" % kind)
 
 
 def vstack(heights, top=BODY_Y, bottom=BODY_END, gap=GAP):
@@ -197,23 +285,120 @@ def page_source(slide, source):
     text(slide, M, FOOT_Y, 9, 0.35, source, SIZE["source"], color="muted")
 
 
-# --- レイアウト関数（layout-catalog.md の番号に対応） ---
+# --- レイアウト関数（layout-catalog.md の原型に対応。主役を回すために使い分ける） ---
 
-def slide_claim_evidence(prs, title, reading, source, draw_exhibit):
+def slide_cover(prs, title, meta, dark=True):
     s = blank(prs)
+    k = skeleton("cover")
+    if dark:
+        rect(s, *k["canvas"], fill="primary")
+    text(s, *k["title"], lines=title, size=SIZE["cover"], color="bg" if dark else "text", bold=True)
+    text(s, *k["meta"], lines=meta, size=18, color="line" if dark else "muted")
+    return s
+
+
+def slide_divider(prs, number, lead):
+    """章扉。デッキ全体で3回まで。濃い面がリズムの節目になる。"""
+    s = blank(prs)
+    k = skeleton("divider")
+    rect(s, *k["canvas"], fill="primary")
+    text(s, *k["number"], lines=number, size=84, color="bg", bold=True)
+    text(s, *k["lead"], lines=lead, size=32, color="bg", bold=True)
+    return s
+
+
+def slide_claim_evidence(prs, title, reading, source, draw_exhibit, panel=True):
+    s = blank(prs)
+    k = skeleton("claim-evidence")
     page_title(s, title)
-    x, w = col(1, 7)
-    rect(s, x, BODY_Y, w, BODY_END - BODY_Y, "panel")
-    draw_exhibit(s, x + 0.2, BODY_Y + 0.2, w - 0.4, BODY_END - BODY_Y - 0.4)
-    rx, rw = col(8, 5)
-    text(s, rx, BODY_Y, rw, BODY_END - BODY_Y, reading, SIZE["body"])
+    ex = k["exhibit"]
+    if panel:
+        rect(s, *ex, fill="panel")
+    draw_exhibit(s, ex[0] + 0.2, ex[1] + 0.2, ex[2] - 0.4, ex[3] - 0.4)
+    text(s, *k["reading"], lines=reading, size=SIZE["body"])
     page_source(s, source)
+    return s
+
+
+def slide_split(prs, title, aside, main_lines, source=None):
+    """1:2 の非対称分割。左に短い視点、右に本体。均等分割の単調さを崩す。"""
+    s = blank(prs)
+    k = skeleton("split-asymmetric")
+    page_title(s, title)
+    text(s, *k["aside"], lines=aside, size=SIZE["h2"], color="muted")
+    text(s, *k["main"], lines=main_lines, size=SIZE["body"])
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_comparison(prs, title, heads, bodies, note=None, source=None):
+    s = blank(prs)
+    k = skeleton("comparison")
+    page_title(s, title)
+    for (cx, cy, cw_, chh), head, body in zip(k["columns"], heads, bodies):
+        text(s, cx, cy, cw_, 0.5, head, SIZE["h2"], bold=True)
+        text(s, cx, cy + 0.7, cw_, chh - 1.9, body, SIZE["body"], bullets=True)
+    if note:
+        text(s, M, BODY_END - 1.0, W - 2 * M, 0.9, note, SIZE["body"])
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_statement(prs, line, dark=False):
+    """一文だけのページ。密なページの後に置いて息継ぎにする。連発しない。"""
+    s = blank(prs)
+    if dark:
+        rect(s, 0, 0, W, H, "primary")
+    k = skeleton("statement")
+    text(s, *k["line"], lines=line, size=32, color="bg" if dark else "text",
+         bold=True, anchor=MSO_ANCHOR.MIDDLE)
+    return s
+
+
+def slide_hero_number(prs, title, number, caption, context, source=None):
+    """数字が主張そのものであるときだけ。1デッキで2〜3回まで。"""
+    s = blank(prs)
+    k = skeleton("hero-number")
+    page_title(s, title)
+    text(s, *k["number"], lines=number, size=84, color="accent", bold=True)
+    text(s, *k["caption"], lines=caption, size=SIZE["body"], color="muted")
+    text(s, *k["context"], lines=context, size=SIZE["body"], anchor=MSO_ANCHOR.BOTTOM)
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_steps(prs, title, steps):
+    """番号つきの手順。5つまで。番号・時期・内容の3列は同じ高さで中央に揃える。"""
+    s = blank(prs)
+    k = skeleton("steps")
+    page_title(s, title)
+    for (rx, ry, rw, rh), (num, when, what) in zip(k["rows"], steps):
+        text(s, rx, ry, 0.6, rh, num, SIZE["h2"], color="accent", bold=True, anchor=MSO_ANCHOR.MIDDLE)
+        text(s, rx + 0.7, ry, 2.4, rh, when, SIZE["body"], color="muted", anchor=MSO_ANCHOR.MIDDLE)
+        text(s, rx + 3.2, ry, rw - 3.2, rh, what, SIZE["body"], anchor=MSO_ANCHOR.MIDDLE)
+    return s
+
+
+def slide_closing(prs, title, asks, risks=None, contact=None):
+    """結論・依頼。質疑の間これが画面に残る。"""
+    s = blank(prs)
+    k = skeleton("closing")
+    page_title(s, title)
+    text(s, *k["asks"], lines=asks, size=SIZE["body"])
+    if risks:
+        text(s, *k["risks"], lines=risks, size=SIZE["body"], color="muted")
+    if contact:
+        page_source(s, contact)
     return s
 
 
 def build():
     prs = new_deck()
-    # outline.md の順にレイアウト関数を呼ぶ
+    # outline.md の順にレイアウト関数を呼ぶ。同じ関数を3枚以上続けない。
+    # 主役を回す: 図 → 文 → 数字 → 表 → 図。濃い面（cover/divider/statement dark）は3回まで。
     prs.save("deck/output.pptx")
 
 
@@ -227,6 +412,7 @@ if __name__ == "__main__":
 - **`add_textbox` の既定は折り返し無し（`wrap="none"`）と `spAutoFit`。** そのままだと1行で右へ伸び、箱の大きさも文字に合わせて変わる。必ず `word_wrap = True` と `auto_size = MSO_AUTO_SIZE.NONE` にし、箱の高さは `text_height()` で決める。
 - **`normAutofit`（文字の自動縮小）を使わない。** PowerPoint で開いたときだけ縮小され、描画確認とずれる。縮小後のサイズが下限を割る。
 - **N 個を横に並べるときは `spread()` で幅を計算する。** 固定幅を N 回置くと、N が増えたときに右端が溢れる。
+- **`MODE` は最初に決める。** 講演型と資料型でサイズが違う。途中で変えると型スケールが混ざる。lint の `--mode` にも同じ値を渡す。
 - **縦に積むときは `vstack()`、下端の注記は `bottom_note()`、本文の範囲は `content_band()`。** 手で y を置くと、文言が1行増えた瞬間に重なる。`vstack()` は収まらないと例外を出すので、黙って重ならない。
 - **プレースホルダのレイアウトを使うと、テーマ由来の書式が混ざる。** 新規作成は白紙レイアウト（index 6）に textbox と shape で組む。テンプレを使うときだけレイアウトのプレースホルダを使う。
 - **既定の図形には影と枠線がつく。** `shape.shadow.inherit = False`、`shape.line.fill.background()` を毎回呼ぶ。

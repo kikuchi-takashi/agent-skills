@@ -34,7 +34,7 @@ python -m agent_skills_marketplace index --root collections --output marketplace
 python -m agent_skills_marketplace index --root collections --output marketplace.json --check
 ```
 
-Also run a validator for each changed skill when available, execute every new or changed script through its main success path, and run any scoped collection validator (for SDD, `collections/sdd/scripts/validate`). Finish with `git status --short` and `git diff --check`, then inspect the full diff and confirm the generated index contains only intended changes.
+Also run a validator for each changed skill when available, execute every new or changed script through its main success path, and run any scoped collection validator (for SDD, `collections/sdd/scripts/validate`; for PPTX, `collections/pptx/scripts/eval-checks.py` and `collections/pptx/scripts/audit-consistency.py`). Finish with `git status --short` and `git diff --check`, then inspect the full diff and confirm the generated index contains only intended changes.
 
 ## Safety boundaries
 

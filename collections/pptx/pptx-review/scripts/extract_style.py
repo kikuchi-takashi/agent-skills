@@ -63,6 +63,7 @@ def extract(pkg):
     margins = {"left": [], "right": [], "top": [], "bottom": []}
     layouts = Counter()
     donors = {}
+    donor_candidates = {}
     geoms = Counter()
     per_slide = []
     for index, part in enumerate(slides, start=1):
@@ -136,8 +137,11 @@ def extract(pkg):
                 margins["right"].append(cw - (x + w))
                 margins["top"].append(y)
                 margins["bottom"].append(ch - (y + h))
-            if not is_cover and role not in donors and para_has_sizes(s):
-                donors[role] = {"slide": index, "shape": s["name"] or s["id"]}
+            if not is_cover and para_has_sizes(s):
+                donor_candidates.setdefault(role, []).append(
+                    {"slide": index, "shape": s["name"] or s["id"],
+                     "box": [round(v, 2) for v in s["box"]],
+                     "size": max((max(pp["sizes"]) for pp in s["paragraphs"] if pp["sizes"]), default=0)})
         for s in shapes:
             if s["kind"] == "shape" and s["filled"]:
                 geoms[s["geom"] or "rect"] += 1
@@ -151,6 +155,23 @@ def extract(pkg):
                     if hexl:
                         line_colors[hexl] += 1
         per_slide.append({"index": index, "is_cover": is_cover, "roles": roles})
+
+    # 役割ごとの複製元を選ぶ。本文は「揃え線に載っていて、型スケールの本文サイズ」のものを選ぶ
+    # （2段組みの右列や、大きな数字を複製元にしない）。
+    main_x = mode(body_left)
+    main_body = mode(body_sizes)
+    main_title = mode(title_sizes)
+    for role, cands in donor_candidates.items():
+        if role == "body":
+            best = min(cands, key=lambda c: (
+                abs(c["size"] - main_body) if main_body else 0,
+                abs(c["box"][0] - main_x) if main_x is not None else 0,
+                c["slide"]))
+        elif role == "title" and main_title:
+            best = min(cands, key=lambda c: (abs(c["size"] - main_title), c["slide"]))
+        else:
+            best = cands[0]
+        donors[role] = {"slide": best["slide"], "shape": best["shape"], "box_in": best["box"], "size_pt": best["size"]}
 
     used_colors = Counter()
     used_colors.update(text_colors); used_colors.update(fill_colors); used_colors.update(line_colors)
@@ -234,7 +255,8 @@ def to_markdown(lock, path):
         "## 複製元（新しい要素はこれを複製して文言だけ変える）",
     ]
     for role, d in p["donors"].items():
-        lines.append("- %s: スライド %d の「%s」" % (role, d["slide"], d["shape"]))
+        lines.append("- %s: スライド %d の「%s」（%s pt、元の位置 x %.2f, y %.2f, 幅 %.2f）。**複製後は位置を置き直す。書式だけを引き継ぐ**"
+                     % (role, d["slide"], d["shape"], d["size_pt"], d["box_in"][0], d["box_in"][1], d["box_in"][2]))
     lines += ["", "## 変更履歴", "- 抽出時点の値。変更するときは日付と理由を追記する。", ""]
     return "\n".join(lines)
 

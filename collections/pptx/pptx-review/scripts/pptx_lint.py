@@ -376,9 +376,17 @@ def geometry(el):
 
 def has_fill(el):
     sp_pr = el.find(q("p", "spPr"))
-    if sp_pr is None:
-        return False
-    return sp_pr.find(q("a", "solidFill")) is not None or sp_pr.find(q("a", "gradFill")) is not None
+    if sp_pr is not None:
+        if sp_pr.find(q("a", "noFill")) is not None:
+            return False
+        if sp_pr.find(q("a", "solidFill")) is not None or sp_pr.find(q("a", "gradFill")) is not None:
+            return True
+    style = el.find(q("p", "style"))          # テーマ由来の塗り（既定の図形はこちら）
+    if style is not None:
+        ref = style.find(q("a", "fillRef"))
+        if ref is not None and ref.get("idx", "0") != "0":
+            return True
+    return False
 
 
 def body_insets(body_pr):
@@ -575,6 +583,17 @@ def slide_colors(pkg, part):
     colors = Counter()
     for node in root.iter(q("a", "srgbClr")):
         colors[node.get("val", "").upper()] += 1
+    return colors
+
+
+def slide_text_colors(shapes):
+    """文字に使われている色だけを集める。面や線の色は設計判断なので分けて扱う。"""
+    colors = set()
+    for shape in shapes:
+        for para in shape["paragraphs"]:
+            for run in para["runs"]:
+                if run["text"].strip() and run["color"] and run["color"][0] == "srgb":
+                    colors.add(run["color"][1])
     return colors
 
 
@@ -872,14 +891,15 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
                 body_runs[round(max(para["sizes"]))] += len(para["text"].strip())
     full_bleed = any(s["box"] is not None and s["filled"] and s["box"][2] >= cw * 0.95 and s["box"][3] >= ch * 0.95
                      for s in shapes if s["kind"] == "shape")
-    content_rects = [r for r in rects if not (r["box"][2] >= cw * 0.95 and r["box"][3] >= ch * 0.95)]
     deck_state["records"].append({
         "index": index,
         "title_box": tuple(round(v, 2) for v in title_box) if title_box else None,
         "title_size": max((max(p["sizes"]) for p in title_shape["paragraphs"] if p["sizes"]), default=None) if title_shape else None,
         "left_x": round(min(content_left), 2) if content_left else None,
         "body_size": body_runs.most_common(1)[0][0] if body_runs else None,
-        "is_cover": full_bleed or (len(text_shapes) <= 2 and not content_rects),
+        "family": form_family(shapes, text_shapes, title_shape, cw, ch),
+        # 表紙かどうかは、全ページのタイトルサイズが出そろってから決める（consistency_findings）。
+        "full_bleed": full_bleed,
     })
     run = deck_state["signatures"][-3:]
     if len(run) == 3 and run[0] == run[1] == run[2] and len(signature) >= 2:
@@ -930,6 +950,37 @@ def chart_findings(pkg, part):
     return findings
 
 
+def form_family(shapes, text_shapes, title_shape, cw, ch):
+    """ページの主役で分類する。デッキが同じ形ばかりになっていないかを見るため。"""
+    kinds = set(s["kind"] for s in shapes)
+    if "chart" in kinds:
+        return "図表"
+    if "table" in kinds:
+        return "表"
+    for s in shapes:
+        if s["kind"] == "picture" and s["box"] and s["box"][2] * s["box"][3] > cw * ch * 0.2:
+            return "画像"
+    for s in text_shapes:
+        if s is title_shape:
+            continue
+        if any(sz >= 48 for p in s["paragraphs"] for sz in p["sizes"]):
+            return "大きな数字"
+    bullets = sum(1 for s in text_shapes for p in s["paragraphs"] if p["bullet"])
+    cards = [s for s in shapes if s["kind"] == "shape" and s["filled"] and s["box"]
+             and s["box"][2] >= 1.5 and s["box"][3] >= 1.0
+             and not (s["box"][2] >= cw * 0.95 and s["box"][3] >= ch * 0.95)]
+    if len(cards) >= 2:
+        return "カード・面"
+    if bullets >= 3:
+        return "箇条書き"
+    body = [s for s in text_shapes if s is not title_shape]
+    if len(body) >= 2:
+        xs = sorted(round(s["box"][0], 1) for s in body)
+        if xs[-1] - xs[0] > cw * 0.25:
+            return "多段"
+    return "文章"
+
+
 def color_distance(a, b):
     try:
         return sum(abs(int(a[i:i + 2], 16) - int(b[i:i + 2], 16)) for i in (0, 2, 4))
@@ -940,6 +991,13 @@ def color_distance(a, b):
 def consistency_findings(report_slides, deck_state):
     """ページ間の統一性。多数派から外れたページに指摘を付ける（4枚以上のとき）。"""
     records = deck_state["records"]
+    # 表紙・章扉の判定: 全面塗り、上部帯にタイトルが無い、またはタイトルが本文ページの多数派より
+    # 目立って大きいページ。1枚目かどうかでは決めない（本文から始まるデッキがあるため）。
+    titled = [r for r in records if not r["full_bleed"] and r["title_box"] and r["title_size"]]
+    majority_title = Counter(r["title_size"] for r in titled).most_common(1)[0][0] if titled else None
+    for r in records:
+        r["is_cover"] = bool(r["full_bleed"] or not r["title_box"] or
+                             (majority_title and r["title_size"] and r["title_size"] >= majority_title * 1.25))
     body = [r for r in records if not r["is_cover"]]
     if len(body) < 4:
         return
@@ -949,10 +1007,14 @@ def consistency_findings(report_slides, deck_state):
         by_index[index]["findings"].append({"code": code, "severity": severity, "message": message})
 
     # タイトルの位置と大きさ
+    def has_majority(n):
+        """過半数かつ3枚以上のときだけ「多数派」と認める。3対3で割れたら咎めない。"""
+        return n >= 3 and n * 2 > len(body)
+
     boxes = Counter((r["title_box"][0], r["title_box"][1], r["title_box"][2]) for r in body if r["title_box"])
     if boxes:
         (mx, my, mw), n = boxes.most_common(1)[0]
-        if n >= max(3, len(body) // 2):
+        if has_majority(n):
             for r in body:
                 if r["title_box"] and (abs(r["title_box"][0] - mx) > 0.1 or abs(r["title_box"][1] - my) > 0.1 or abs(r["title_box"][2] - mw) > 0.2):
                     add(r["index"], "TITLE_POSITION_DRIFT",
@@ -960,7 +1022,7 @@ def consistency_findings(report_slides, deck_state):
     sizes = Counter(r["title_size"] for r in body if r["title_size"])
     if sizes:
         ms, n = sizes.most_common(1)[0]
-        if n >= max(3, len(body) // 2):
+        if has_majority(n):
             for r in body:
                 if r["title_size"] and abs(r["title_size"] - ms) > 1:
                     add(r["index"], "TITLE_SIZE_DRIFT", "タイトルが %.0fpt。多数派は %.0fpt" % (r["title_size"], ms))
@@ -968,20 +1030,31 @@ def consistency_findings(report_slides, deck_state):
     lefts = Counter(r["left_x"] for r in body if r["left_x"] is not None)
     if lefts:
         ml, n = lefts.most_common(1)[0]
-        if n >= max(3, len(body) // 2):
+        if has_majority(n):
             for r in body:
                 if r["left_x"] is not None and abs(r["left_x"] - ml) > 0.15:
                     add(r["index"], "MARGIN_DRIFT", "本文の左端が x=%.2f。多数派は x=%.2f" % (r["left_x"], ml))
-    # 本文サイズ（ページごとの主たるサイズ）の多数派
-    body_sizes = Counter(r["body_size"] for r in body if r["body_size"])
-    if body_sizes:
-        mb, n = body_sizes.most_common(1)[0]
-        if n >= max(3, len(body) // 2):
-            for r in body:
-                if r["body_size"] and r["body_size"] != mb:
-                    add(r["index"], "BODY_SIZE_DRIFT", "本文が %dpt。多数派は %dpt" % (r["body_size"], mb))
+    # 本文サイズ: 型スケールに無く、かつ既存サイズに「惜しい」ものだけを咎める。
+    # 明確に違うサイズ（密度を変える設計判断）は残す。
+    scale = sorted(sz for sz, n in Counter(r["body_size"] for r in body if r["body_size"]).items() if n >= 2)
+    if scale:
+        for r in body:
+            sz = r["body_size"]
+            if not sz or sz in scale:
+                continue
+            close = [v for v in scale if 0 < abs(v - sz) <= 3]
+            if close:
+                add(r["index"], "BODY_SIZE_DRIFT",
+                    "本文が %dpt。型スケールの %dpt に寄せる" % (sz, min(close, key=lambda v: abs(v - sz))))
+
+    # 形式ファミリーの偏り: 同じ主役ばかりのデッキを咎める（乖離の裏返し）
+    families = Counter(r["family"] for r in body if r["family"])
+    if families and len(body) >= 5:
+        top, n = families.most_common(1)[0]
+        tally = " / ".join("%s %d" % kv for kv in families.most_common())
+        deck_state["variety"] = {"tally": tally, "dominant": top, "share": round(n / float(len(body)), 2)}
     # 色の語彙（2ページ以上で使われる色）
-    # 色: 既存の色に「近いが違う」色だけを指摘する（明確に別の色は強調の意図とみなす）
+    # 文字色: 既存の文字色に「近いが違う」色だけを指摘する。面や線の淡い色差は設計判断として扱わない
     body_indexes = set(r["index"] for r in body)
     color_pages = Counter(c for cs in deck_state["slide_colors"] for c in cs)
     palette = [c for c, n in color_pages.items() if n >= 2 and len(c) == 6]
@@ -998,7 +1071,7 @@ def consistency_findings(report_slides, deck_state):
                     near.append((c, closest))
             if near:
                 add(i, "PALETTE_DRIFT",
-                    "色 %s が既存の %s に近いが違う。同じ色にそろえる" % (", ".join(a for a, _ in near), ", ".join(b for _, b in near)))
+                    "文字色 %s が既存の %s に近いが違う。同じ色にそろえる" % (", ".join(a for a, _ in near), ", ".join(b for _, b in near)))
 
 
 def package_findings(pkg, slides):
@@ -1107,13 +1180,16 @@ def main(argv=None):
 
     lock = load_lock(args.lock)
     baseline = load_baseline(args.baseline)
+    if not slide_order(pkg):
+        print("ERROR: スライドが1枚も無い", file=sys.stderr)
+        return 2
     font_path = args.font
     if font_path is None and _ImageFont is not None:
         font_path = find_fonts()[0]
     MEASURER.__init__(font_path if (_ImageFont and font_path) else None)
     canvas = canvas_size(pkg)
     slides = slide_order(pkg)
-    deck_state = {"fonts": set(), "signatures": [], "colors": Counter(), "records": [], "slide_colors": []}
+    deck_state = {"fonts": set(), "signatures": [], "colors": Counter(), "records": [], "slide_colors": [], "variety": None}
     report_slides = []
     deck_findings = package_findings(pkg, slides)
     for index, part in enumerate(slides, start=1):
@@ -1133,7 +1209,7 @@ def main(argv=None):
         shapes = collect_shapes(pkg, part, layout_pos, master_pos)
         colors_here = slide_colors(pkg, part)
         deck_state["colors"].update(colors_here)
-        deck_state["slide_colors"].append(set(colors_here))
+        deck_state["slide_colors"].append(slide_text_colors(shapes))
         slide_report = lint_slide(index, shapes, canvas, args, lock, deck_state, notes_present(pkg, part))
         slide_report["findings"].extend(chart_findings(pkg, part))
         report_slides.append(slide_report)
@@ -1141,6 +1217,11 @@ def main(argv=None):
     if not args.no_consistency:
         consistency_findings(report_slides, deck_state)
     fonts = sorted(deck_state["fonts"])
+    variety = deck_state.get("variety")
+    if variety and variety["share"] > 0.5:
+        deck_findings.append({"code": "FORM_FAMILY_MONOTONE", "severity": "warning",
+                              "message": "本文の %d%% が「%s」。主役を回す（内訳: %s）" % (
+                                  int(variety["share"] * 100), variety["dominant"], variety["tally"])})
     if len(fonts) > 3:
         deck_findings.append({"code": "MIXED_FONTS", "severity": "warning",
                               "message": "書体が %d 種類: %s。和文1種＋欧文1種までに絞る" % (len(fonts), ", ".join(fonts))})
@@ -1190,6 +1271,7 @@ def main(argv=None):
         "fonts_used": fonts,
         "colors_used": [c for c, _ in deck_state["colors"].most_common(16)],
         "notes_present": "%d/%d" % (notes_count, len(slides)),
+        "form_families": (deck_state.get("variety") or {}).get("tally"),
         "deck_findings": deck_findings,
         "slides": report_slides,
         "summary": {"errors": errors, "warnings": warnings, "strict": args.strict,
