@@ -63,6 +63,13 @@ M = 0.6                     # 余白
 COL_W = (W - 2 * M - 0.25 * 11) / 12
 TITLE_Y, TITLE_H, BODY_Y, BODY_END, FOOT_Y = 0.6, 1.4, 2.2, 6.6, 6.8
 GAP = 0.3                   # 要素間の最小間隔
+LINE = 1.4                  # 行送り。倍率ではなく実寸(pt)で書き出す（text() を見よ）
+PARA_GAP = 6                # 段落の後ろのアキ(pt)。text_height() が同じ値を数える
+FOOT = {                    # フッター行の持ち場。左=出典 / 中=章名・付録の印 / 右=ページ番号
+    "source": (M, 6.4),
+    "section": (M + 6.6, 3.6),
+    "page": (W - M - 1.2, 1.2),
+}
 
 # 密度モード。design-lock.md の型スケールに対応する。ブリーフで決めた方を選ぶ。
 #   talk = 講演型（話者が語る。文字は大きく、枚数は多め）
@@ -82,15 +89,38 @@ def col(start, span):
     return x, span * COL_W + (span - 1) * 0.25
 
 
-def text_height(lines, size, line_spacing=1.4, slack_lines=0.5):
-    """行数とサイズから箱の高さ（inch）を返す。半行分の余裕を足す。"""
-    return (lines + slack_lines) * size * line_spacing / 72.0
+def text_height(lines, size, line_spacing=LINE, slack_lines=0.35, para_gap=PARA_GAP):
+    """行数とサイズから箱の高さ（inch）を返す。
+
+    段落の後ろのアキを (行数-1) 回ぶん数える。**ここを数え落とすと、2行までは
+    収まり、3行目が入った瞬間だけ静かに溢れる。** 余裕は半行ではなく 0.35 行。
+    lines は段落数ではなく**折り返した後の行数**。幅が決まっているなら
+    block_height() を使う（折り返しを数えてから呼び直す）。
+    """
+    pts = lines * size * line_spacing + max(lines - 1, 0) * para_gap
+    return (pts + slack_lines * size * line_spacing) / 72.0
 
 
 def text_width(text, size):
     """1行で描いたときの幅（pt）の概算。全角は size、半角は 0.55×size。"""
     import unicodedata
     return sum(size if unicodedata.east_asian_width(c) in ("W", "F") else size * 0.55 for c in text)
+
+
+def wrapped_lines(lines, w, size):
+    """幅 w（inch）に置いたときの、折り返した後の行数。"""
+    rows = lines if isinstance(lines, list) else [lines]
+    inner = max(w, 0.1) * 72.0
+    return sum(max(1, int(math.ceil(text_width(row, size) / inner))) for row in rows)
+
+
+def block_height(lines, w, size, slack_lines=0.35):
+    """文言と幅から箱の高さ（inch）を測る。**y と高さを手で置く代わりに使う。**
+
+    text_height(len(rows), size) は折り返しを数えない。1行が2行に折れた瞬間に
+    足りなくなり、下に積んだものと重なる。幅が決まっているなら常にこちら。
+    """
+    return text_height(wrapped_lines(lines, w, size), size, slack_lines=slack_lines)
 
 
 def fit_size(text, w, max_size, min_size=32, step=2):
@@ -152,12 +182,14 @@ def bleed(side="right", frac=0.5):
     return (0, 0 if side == "top" else H - h, W, h)
 
 
-def skeleton(kind):
+def skeleton(kind, n=None):
     """ページ構造の名前 → 領域の辞書。レイアウトは archetype から選ぶ（手置きしない）。
 
     使える kind: cover / divider / claim-evidence / split-asymmetric / comparison /
                  statement / hero-number / trend / structure / roadmap / before-after /
                  metrics / table / steps / closing / appendix / photo-full / photo-half
+
+    n は升目の数が中身で決まる原型に渡す（steps）。高さの列を渡してもよい。
     """
     band_x, band_y, band_w, band_h = content_band()
     if kind == "cover":
@@ -172,17 +204,18 @@ def skeleton(kind):
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "exhibit": (left[0], band_y, left[1], band_h),
                 "reading": (right[0], band_y, right[1], band_h),
-                "source": (M, FOOT_Y, 9.0, 0.35)}
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "split-asymmetric":
         narrow, wide = split((1, 2))
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "aside": (narrow[0], band_y, narrow[1], band_h),
                 "main": (wide[0], band_y, wide[1], band_h),
-                "source": (M, FOOT_Y, 9.0, 0.35)}
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "comparison":
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "columns": [(x, band_y, w, band_h) for x, w in split((1, 1), gap=0.4)],
-                "source": (M, FOOT_Y, 9.0, 0.35)}
+                "note": (M, BODY_END - 1.0, W - 2 * M, 1.0),
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "statement":
         return {"line": (1.8, 2.6, W - 3.6, 2.0)}
     if kind == "hero-number":
@@ -190,22 +223,24 @@ def skeleton(kind):
         num_h = text_height(1, HERO_SIZE, slack_lines=0)
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "number": (left[0], band_y + 0.3, left[1], num_h),
-                "caption": (left[0], band_y + 0.3 + num_h + 0.3, left[1], 0.5),
-                "context": (right[0], band_y + 0.3, right[1], num_h),
-                "source": (M, FOOT_Y, 9.0, 0.35)}
+                "caption": (left[0], band_y + 0.3 + num_h + 0.3, left[1],
+                            BODY_END - (band_y + 0.6 + num_h)),   # 折り返しても溢れない
+                "context": (right[0], band_y + 0.3, right[1], BODY_END - band_y - 0.3),
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "trend":                      # 推移: 図を大きく、読み取りを下に敷く
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "exhibit": (band_x, band_y, band_w, band_h - 1.4),
                 "reading": (band_x, band_y + band_h - 1.2, band_w, 0.9),
-                "source": (M, FOOT_Y, 9.0, 0.35)}
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "structure":                  # 構造: 2×2 や樹形。軸ラベルは外側に置く
         cols = split((1, 1), x=band_x + 1.2, total_w=band_w - 1.2, gap=0.3)
-        rows_y = vstack([(band_h - 0.9) / 2] * 2, top=band_y, bottom=band_y + band_h - 0.5, gap=0.3)
+        cell_h = (band_h - 0.45 - 0.25) / 2
+        rows_y = vstack([cell_h] * 2, top=band_y, bottom=band_y + band_h - 0.45, gap=0.25)
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
-                "cells": [(cx, ry, cw_, (band_h - 0.9) / 2) for ry in rows_y for cx, cw_ in cols],
+                "cells": [(cx, ry, cw_, cell_h) for ry in rows_y for cx, cw_ in cols],
                 "y_axis": (band_x, band_y, 1.0, band_h - 0.5),
                 "x_axis": (band_x + 1.2, band_y + band_h - 0.4, band_w - 1.2, 0.4),
-                "source": (M, FOOT_Y, 9.0, 0.35)}
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "photo-full":                 # 写真を全面に敷き、下half に薄い面と文字
         return {"photo": bleed("top", 1.0),
                 "scrim": (0, H * 0.55, W, H * 0.45),
@@ -216,36 +251,36 @@ def skeleton(kind):
         return {"title": (M, TITLE_Y, left[1] + right[0] - M - 0.3, TITLE_H),
                 "reading": (left[0], band_y, left[1], band_h),
                 "photo": (right[0], band_y, right[1], band_h),
-                "source": (M, FOOT_Y, 9.0, 0.35)}
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "appendix":                   # 付録: 本編と同じ版面。印はフッター行の右端に置く
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "body": (band_x, band_y, band_w, band_h),
-                "source": (M, FOOT_Y, 9.0, 0.35),
-                "marker": (W - M - 1.5, FOOT_Y, 1.5, 0.35)}
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35),
+                "marker": (FOOT["section"][0], FOOT_Y, FOOT["section"][1], 0.35)}
     if kind == "roadmap":                    # 時系列: 帯を上に、補足を下に
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "band": (band_x, band_y + 0.3, band_w, 2.4),
                 "note": (band_x, band_y + 3.2, band_w, 1.2),
-                "source": (M, FOOT_Y, 9.0, 0.35)}
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "before-after":               # 対比: 左右と、下に読み取り
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "pair": (band_x, band_y, band_w, band_h - 1.4),
                 "reading": (band_x, band_y + band_h - 1.2, band_w, 0.9),
-                "source": (M, FOOT_Y, 9.0, 0.35)}
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "metrics":                    # KPI: 数字を横に並べ、下に文脈
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "row": (band_x, band_y + 0.4, band_w, 2.0),
-                "context": (band_x, band_y + 3.0, band_w, 1.6),
-                "source": (M, FOOT_Y, 9.0, 0.35)}
+                "context": (band_x, band_y + 3.0, band_w, BODY_END - band_y - 3.0),
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "table":
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "table": (band_x, band_y, band_w, band_h - 1.6),
                 "reading": (band_x, band_y + band_h - 1.4, band_w, 1.0),
-                "source": (M, FOOT_Y, 9.0, 0.35)}
-    if kind == "steps":
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
+    if kind == "steps":                      # 行数は手順の数から決める（固定だと余りが消える）
+        hs = n if isinstance(n, list) else [text_height(1, SIZE["h2"])] * (n or 4)
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
-                "rows": [(M, y, band_w, text_height(1, SIZE["h2"])) for y in
-                         vstack([text_height(1, SIZE["h2"])] * 4, top=band_y)]}
+                "rows": [(M, y, band_w, h) for y, h in zip(vstack(hs, top=band_y), hs)]}
     if kind == "closing":
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "asks": (band_x, band_y, band_w, 2.4),
@@ -266,10 +301,13 @@ def vstack(heights, top=BODY_Y, bottom=BODY_END, gap=GAP):
     return ys
 
 
-def bottom_note(lines, size=None, bottom=BODY_END):
-    """下端に置く注記の (y, 高さ)。下から積むので本文と衝突しない。"""
+def bottom_note(lines, size=None, bottom=BODY_END, w=None):
+    """下端に置く注記の (y, 高さ)。下から積むので本文と衝突しない。
+    幅 w を渡すと折り返しを数える。渡さないと段落数だけで測るので、
+    1行が折れたぶんだけ足りなくなる。"""
     size = size or SIZE["note"]
-    h = text_height(len(lines) if isinstance(lines, list) else 1, size)
+    h = (block_height(lines, w, size) if w else
+         text_height(len(lines) if isinstance(lines, list) else 1, size))
     return bottom - h, h
 
 
@@ -296,11 +334,12 @@ def text(slide, x, y, w, h, lines, size, color="text", bold=False,
     tf.auto_size = MSO_AUTO_SIZE.NONE
     tf.vertical_anchor = anchor
     tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = Inches(0)
-    for i, line in enumerate(lines if isinstance(lines, list) else [lines]):
+    rows = lines if isinstance(lines, list) else [lines]
+    for i, line in enumerate(rows):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         p.alignment = align
-        p.line_spacing = 1.4
-        p.space_after = Pt(6)
+        p.line_spacing = Pt(size * LINE)         # 倍率(spcPct)ではなく実寸(spcPts)
+        p.space_after = Pt(PARA_GAP if i < len(rows) - 1 else 0)
         run = p.add_run()
         run.text = line
         set_font(run, size, color, bold)
@@ -316,6 +355,62 @@ def text(slide, x, y, w, h, lines, size, color="text", bold=False,
             bu = etree.SubElement(ppr, qn("a:buChar"))
             bu.set("char", "・" if level == 0 else "–")
     return box
+
+
+def fit_text(slide, x, y, w, h, lines, size=None, min_size=None, **kw):
+    """**箱の寸法を動かせないとき**だけ使う。収まるまでサイズを1ptずつ下げる。
+
+    格子の升目のように大きさが先に決まっている場所（2×2 の象限、手順の行）で使う。
+    動かせる箱には使わない——動かせるなら block_height() で測って箱のほうを合わせる。
+
+    サイズは1ptずつではなく**型スケールの段**で下げる。13pt のような中間の値を
+    作ると、そのページだけ字種が増えて型スケールから外れる。下限の段まで下げても
+    入らないなら止める。**黙って枠から出さない。** 文言を削る。
+    """
+    size = size or SIZE["body"]
+    min_size = SIZE["note"] if min_size is None else min_size
+    steps = sorted({size, min_size} | {v for v in SIZE.values() if min_size < v < size},
+                   reverse=True)
+    for step in steps:
+        if block_height(lines, w, step, slack_lines=0.0) <= h + 1e-6:
+            return text(slide, x, y, w, h, lines, step, **kw)
+    raise ValueError("%dpt まで下げても %.2fin 必要で、枠は %.2fin。文言を削る"
+                     % (steps[-1], block_height(lines, w, steps[-1], slack_lines=0.0), h))
+
+
+def place(slide, lines, x, y, w, size=None, bottom=BODY_END, **kw):
+    """**箱を動かせるとき**の置き方。高さを測って置き、下端を超えるなら止める。
+
+    高さを決め打つと、文言が1行増えた瞬間に下のものと重なる。ここで止めておけば、
+    重なったデッキが出来上がる前に気づける。
+    """
+    size = size or SIZE["body"]
+    h = block_height(lines, w, size)
+    if y + h > bottom + 1e-6:
+        raise ValueError("文字に %.2fin 必要だが %.2fin しか無い。文言を削るかページを分ける"
+                         % (h, bottom - y))
+    return text(slide, x, y, w, h, lines, size, **kw)
+
+
+def reading_band(lines, x, w, size=None, bottom=BODY_END):
+    """本文領域の下端に置く読み取り文の (x, y, 幅, 高さ)。**高さは文言から決まる。**
+
+    図の高さを先に決めると、読み取りが1行増えた瞬間に図と重なる。先にこれを呼び、
+    残りを図に渡す。
+    """
+    size = size or SIZE["body"]
+    h = block_height(lines, w, size)
+    if bottom - h < BODY_Y:
+        raise ValueError("読み取りに %.2fin 必要で、図の場所が残らない。文言を削る" % h)
+    return (x, bottom - h, w, h)
+
+
+def expect_count(name, items, n):
+    """個数が合わなければ止める。zip は余りを黙って捨てるので、原型の升目より
+    多く渡すと、最後の1つが消えたことに誰も気づけない。"""
+    if len(items) != n:
+        raise ValueError("%s は %d 個で組む。%d 個渡された" % (name, n, len(items)))
+    return items
 
 
 def rect(slide, x, y, w, h, fill=None, rounded=False):
@@ -467,14 +562,15 @@ def box_text(slide, x, y, w, h, lines, size=None, fill=None, color="text",
         need = 0
         for row in rows:
             wrapped = max(1, int(math.ceil(text_width(row, size) / inner_w)))
-            need += wrapped * size * 1.4
+            need += wrapped * size * LINE
         if need <= inner_h:
             break
         size -= 1
     for i, row in enumerate(rows):
         para = frame.paragraphs[0] if i == 0 else frame.add_paragraph()
         para.alignment = align
-        para.line_spacing = 1.4
+        para.line_spacing = Pt(size * LINE)      # 実寸。上の need と同じ尺で測る
+        para.space_after = Pt(0)                 # 段落アキ込みで測っていないので 0 にする
         run = para.add_run()
         run.text = row
         set_font(run, size, color, bold)
@@ -522,16 +618,29 @@ def connect(slide, a, b, color="line", width_pt=1.5, arrow=True):
 
 def table(slide, x, y, w, rows, col_ratio=None, row_h=0.45, right_align_from=1):
     """罫線は横だけ、見出し行は淡い面。数字の列は右揃え。
-    rows は [[見出し...], [値...], ...]。6行×5列までに収める。"""
+    rows は [[見出し...], [値...], ...]。6行×5列までに収める。
+
+    **行の高さは中身から決める。** 固定にすると、折り返したセルのある行だけが
+    枠から出る。row_h は下限として使う。
+    """
     n_rows, n_cols = len(rows), len(rows[0])
+    ratio = col_ratio or [1] * n_cols
+    widths = [w * r / float(sum(ratio)) for r in ratio]
+    heights = []
+    for i, row in enumerate(rows):
+        size = SIZE["body"] if i else SIZE["note"]
+        heights.append(max(row_h, 0.08 + max(
+            block_height(str(v), max(cw_ - 0.16, 0.3), size)
+            for v, cw_ in zip(row, widths))))          # 0.16 は左右の内側余白
     frame = slide.shapes.add_table(n_rows, n_cols, Inches(x), Inches(y),
-                                   Inches(w), Inches(row_h * n_rows))
+                                   Inches(w), Inches(sum(heights)))
     tbl = frame.table
     tbl.first_row = False
     tbl.horz_banding = False
-    ratio = col_ratio or [1] * n_cols
-    for j, r in enumerate(ratio):
-        tbl.columns[j].width = Inches(w * r / float(sum(ratio)))
+    for j, cw_ in enumerate(widths):
+        tbl.columns[j].width = Inches(cw_)
+    for i, h in enumerate(heights):
+        tbl.rows[i].height = Inches(h)
     for i, row in enumerate(rows):
         for j, value in enumerate(row):
             cell = tbl.cell(i, j)
@@ -541,6 +650,7 @@ def table(slide, x, y, w, rows, col_ratio=None, row_h=0.45, right_align_from=1):
             cell.fill.fore_color.rgb = RGBColor.from_string(C["panel"] if i == 0 else C["bg"])
             para = cell.text_frame.paragraphs[0]
             para.alignment = PP_ALIGN.RIGHT if j >= right_align_from else PP_ALIGN.LEFT
+            para.line_spacing = Pt((SIZE["body"] if i else SIZE["note"]) * LINE)
             run = para.add_run()
             run.text = str(value)
             set_font(run, SIZE["body"] if i else SIZE["note"], "text" if i else "muted", bold=(i == 0))
@@ -564,18 +674,20 @@ def timeline(slide, x, y, w, milestones, label_size=None):
     n = len(milestones)
     rect(slide, x, y + 0.55, w, 0.02, "line")
     inset = w / (n * 2.0)                                # 端の札を内側に寄せる
+    col_w = (w - inset * 2) / max(n - 1, 1) * 0.9
+    when_h = text_height(1, label_size)
+    what_h = max(block_height(what, col_w, SIZE["body"]) for _, what in milestones)
     for i, (when, what) in enumerate(milestones):
         cx = x + inset + (w - inset * 2) * (i / float(max(n - 1, 1)))
         dot = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(cx - 0.07), Inches(y + 0.49),
                                      Inches(0.14), Inches(0.14))
         dot.fill.solid(); dot.fill.fore_color.rgb = RGBColor.from_string(C["accent"])
         dot.line.fill.background(); dot.shadow.inherit = False
-        col_w = (w - inset * 2) / max(n - 1, 1) * 0.9
-        text(slide, cx - col_w / 2, y, col_w, 0.4, when, label_size, color="muted",
-             align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.BOTTOM)
-        text(slide, cx - col_w / 2, y + 0.8, col_w, text_height(2, SIZE["body"]), what,
+        text(slide, cx - col_w / 2, y + 0.55 - when_h - 0.1, col_w, when_h, when,
+             label_size, color="muted", align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.BOTTOM)
+        text(slide, cx - col_w / 2, y + 0.8, col_w, what_h, what,   # 高さは一番長い札に揃える
              SIZE["body"], align=PP_ALIGN.CENTER)
-    return y + 0.8 + text_height(2, SIZE["body"])
+    return y + 0.8 + what_h
 
 
 def flow(slide, x, y, w, h, steps, gap=None, fill="panel", hero=None):
@@ -617,6 +729,7 @@ def metrics(slide, x, y, w, items, size=None, hero=0):
     cols = (spread(len(items), x, w, gap=0.5) if hero is None
             else emphasis(len(items), hero, x=x, total_w=w, ratio=1.6, gap=0.5))
     num_h = text_height(1, size, slack_lines=0)
+    label_h = max(block_height(label, cw_, SIZE["note"]) for (cx, cw_), (_, label) in zip(cols, items))
     for i, ((cx, cw_), (value, label)) in enumerate(zip(cols, items)):
         lead = (i == hero)
         cap = size if lead else int(size * 0.62)          # 脇は静かにする
@@ -624,16 +737,19 @@ def metrics(slide, x, y, w, items, size=None, hero=0):
         drop = 0 if lead else num_h - text_height(1, cap, slack_lines=0)
         text(slide, cx, y + drop, cw_, num_h - drop, str(value), fitted,
              color=("accent" if lead else "text"), bold=lead)
-        text(slide, cx, y + num_h + 0.15, cw_, 0.4, label, SIZE["note"], color="muted")
-    return y + num_h + 0.55
+        text(slide, cx, y + num_h + 0.15, cw_, label_h, label, SIZE["note"], color="muted")
+    return y + num_h + 0.15 + label_h
 
 
 def quote(slide, x, y, w, body, source=None):
     """引用・利用者の声。太い縦線ではなく、字下げと書体で引用だと示す。"""
-    text(slide, x, y, w, text_height(3, SIZE["h2"]), body, SIZE["h2"])
+    h = block_height(body, w, SIZE["h2"])        # 3行固定にすると長い引用が溢れる
+    text(slide, x, y, w, h, body, SIZE["h2"])
     if source:
-        text(slide, x, y + text_height(3, SIZE["h2"]), w, 0.4, source, SIZE["note"], color="muted")
-    return y + text_height(3, SIZE["h2"]) + 0.5
+        src_h = text_height(1, SIZE["note"])
+        text(slide, x, y + h + 0.1, w, src_h, source, SIZE["note"], color="muted")
+        h += 0.1 + src_h
+    return y + h + 0.3
 
 
 def before_after(slide, x, y, w, h, before, after, labels=("導入前", "導入後"),
@@ -646,16 +762,18 @@ def before_after(slide, x, y, w, h, before, after, labels=("導入前", "導入�
     """
     (lx, lw), (rx, rw) = split(list(weights), x=x, total_w=w, gap=0.8)
     lead = 1 if weights[1] >= weights[0] else 0
+    label_h = text_height(1, SIZE["note"])
+    top = y + label_h + 0.1                      # 札の下。ここから下が対比の面
     for i, ((bx, bw), label, lines) in enumerate((((lx, lw), labels[0], before),
                                                   ((rx, rw), labels[1], after))):
-        text(slide, bx, y, bw, 0.4, label, SIZE["note"], color="muted")
+        text(slide, bx, y, bw, label_h, label, SIZE["note"], color="muted")
         if i == lead:
-            rect(slide, bx, y + 0.5, bw, h - 0.5, "panel")
-        pad = 0.25 if i == lead else 0.0
-        text(slide, bx + pad, y + 0.75, bw - pad * 2, h - 1.0, lines, SIZE["body"],
-             color=("text" if i == lead else "muted"))
+            rect(slide, bx, top, bw, y + h - top, "panel")
+        pad = 0.25 if i == lead else 0.0         # 左右の余白は面のある側だけ
+        fit_text(slide, bx + pad, top + 0.2, bw - pad * 2, y + h - top - 0.4,
+                 lines, SIZE["body"], color=("text" if i == lead else "muted"))
     arrow = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, Inches(lx + lw + 0.15),
-                                   Inches(y + h / 2), Inches(0.5), Inches(0.2))
+                                   Inches((top + y + h) / 2 - 0.1), Inches(0.5), Inches(0.2))
     arrow.fill.solid(); arrow.fill.fore_color.rgb = RGBColor.from_string(C["accent"])
     arrow.line.fill.background(); arrow.shadow.inherit = False
     return y + h + 0.5
@@ -675,13 +793,13 @@ def motif_legend(slide, meaning, x=M, y=None, w=5.0):
 def chrome(slide, page=None, total=None, section=None, logo=None):
     """全ページ共通の細部。ページ番号・章の進行表示・ロゴを定位置に置く。
     静かな層なので、位置と大きさを全ページで変えない。"""
-    if section:                                  # 左は page_source() が使うので右に寄せる
-        text(slide, W - M - 5.4, FOOT_Y, 4.0, 0.35, section, SIZE["source"],
-             color="muted", align=PP_ALIGN.RIGHT)
+    if section:                                  # 中の持ち場。左は出典、右はページ番号
+        text(slide, FOOT["section"][0], FOOT_Y, FOOT["section"][1], 0.35, section,
+             SIZE["source"], color="muted", align=PP_ALIGN.RIGHT)
     if page is not None:
         label = "%d / %d" % (page, total) if total else str(page)
-        text(slide, W - M - 1.2, FOOT_Y, 1.2, 0.35, label, SIZE["source"],
-             color="muted", align=PP_ALIGN.RIGHT)
+        text(slide, FOOT["page"][0], FOOT_Y, FOOT["page"][1], 0.35, label,
+             SIZE["source"], color="muted", align=PP_ALIGN.RIGHT)
     if logo:
         picture(slide, logo, W - M - 1.2, 0.35, 1.2, 0.4, fit="contain")
 
@@ -705,8 +823,9 @@ def page_title(slide, title):
 
 
 def page_source(slide, source):
-    """出典。フッター左の 6.5in。右側は chrome() の章名とページ番号が使う。"""
-    text(slide, M, FOOT_Y, 6.5, 0.35, source, SIZE["source"], color="muted")
+    """出典。フッター行の左の持ち場。中と右は chrome() が使う（FOOT を見よ）。"""
+    text(slide, FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35, source,
+         SIZE["source"], color="muted")
 
 
 # --- レイアウト関数（layout-catalog.md の原型に対応。主役を回すために使い分ける） ---
@@ -716,10 +835,12 @@ def slide_cover(prs, title, meta, dark=True):
     k = skeleton("cover")
     if dark:
         rect(s, *k["canvas"], fill="primary")
-    text(s, *k["title"], lines=title, size=SIZE["cover"], color="bg" if dark else "text", bold=True)
-    mx, my, mw, _ = k["meta"]                    # 高さは行数から決める（固定だと2行目が溢れる）
-    rows = meta if isinstance(meta, list) else [meta]
-    text(s, mx, my, mw, text_height(len(rows), 18), lines=rows, size=18,
+    tx, _, tw, _ = k["title"]                    # 高さは折り返し込みで測り、meta の上に積む
+    th = block_height(title, tw, SIZE["cover"])
+    mx, my, mw, _ = k["meta"]
+    text(s, tx, my - 0.35 - th, tw, th, lines=title,
+         size=SIZE["cover"], color="bg" if dark else "text", bold=True)
+    text(s, mx, my, mw, block_height(meta, mw, 18), lines=meta, size=18,
          color="line" if dark else "muted")
     return s
 
@@ -730,7 +851,8 @@ def slide_divider(prs, number, lead):
     k = skeleton("divider")
     rect(s, *k["canvas"], fill="primary")
     text(s, *k["number"], lines=number, size=84, color="bg", bold=True)
-    text(s, *k["lead"], lines=lead, size=32, color="bg", bold=True)
+    lx, ly, lw, _ = k["lead"]
+    text(s, lx, ly, lw, block_height(lead, lw, 32), lines=lead, size=32, color="bg", bold=True)
     return s
 
 
@@ -763,11 +885,16 @@ def slide_comparison(prs, title, heads, bodies, note=None, source=None):
     s = blank(prs)
     k = skeleton("comparison")
     page_title(s, title)
+    expect_count("見出し", heads, len(k["columns"]))
+    expect_count("本文", bodies, len(k["columns"]))
+    head_h = text_height(1, SIZE["h2"])
+    reserve = k["note"][3] + GAP if note else 0.0     # 注記があるときだけ下を空ける
     for (cx, cy, cw_, chh), head, body in zip(k["columns"], heads, bodies):
-        text(s, cx, cy, cw_, 0.5, head, SIZE["h2"], bold=True)
-        text(s, cx, cy + 0.7, cw_, chh - 1.9, body, SIZE["body"], bullets=True)
+        text(s, cx, cy, cw_, head_h, head, SIZE["h2"], bold=True)
+        text(s, cx, cy + head_h + 0.2, cw_, chh - head_h - 0.2 - reserve, body,
+             SIZE["body"], bullets=True)
     if note:
-        text(s, M, BODY_END - 1.0, W - 2 * M, 0.9, note, SIZE["body"])
+        text(s, *k["note"], lines=note, size=SIZE["body"])
     if source:
         page_source(s, source)
     return s
@@ -779,8 +906,8 @@ def slide_statement(prs, line, dark=False):
     if dark:
         rect(s, 0, 0, W, H, "primary")
     k = skeleton("statement")
-    text(s, *k["line"], lines=line, size=32, color="bg" if dark else "text",
-         bold=True, anchor=MSO_ANCHOR.MIDDLE)
+    fit_text(s, *k["line"], lines=line, size=32, min_size=20, color="bg" if dark else "text",
+             bold=True, anchor=MSO_ANCHOR.MIDDLE)
     return s
 
 
@@ -792,7 +919,7 @@ def slide_hero_number(prs, title, number, caption, context, source=None):
     size = fit_size(number, k["number"][2], HERO_SIZE)   # 長い数字は自動で下げる
     text(s, *k["number"], lines=number, size=size, color="accent", bold=True)
     text(s, *k["caption"], lines=caption, size=SIZE["body"], color="muted")
-    text(s, *k["context"], lines=context, size=SIZE["body"], anchor=MSO_ANCHOR.BOTTOM)
+    text(s, *k["context"], lines=context, size=SIZE["body"])
     if source:
         page_source(s, source)
     return s
@@ -801,7 +928,10 @@ def slide_hero_number(prs, title, number, caption, context, source=None):
 def slide_steps(prs, title, steps):
     """番号つきの手順。5つまで。番号・時期・内容の3列は同じ高さで中央に揃える。"""
     s = blank(prs)
-    k = skeleton("steps")
+    body_w = W - 2 * M - 3.2                     # 内容の列。番号 0.6 と時期 2.4 の右
+    hs = [max(text_height(1, SIZE["h2"]), block_height(what, body_w, SIZE["body"]))
+          for _, _, what in steps]               # 行の高さは内容から。手順の数だけ行を作る
+    k = skeleton("steps", hs)
     page_title(s, title)
     for (rx, ry, rw, rh), (num, when, what) in zip(k["rows"], steps):
         text(s, rx, ry, 0.6, rh, num, SIZE["h2"], color="accent", bold=True, anchor=MSO_ANCHOR.MIDDLE)
@@ -815,9 +945,14 @@ def slide_table(prs, title, rows, reading=None, col_ratio=None, source=None):
     s = blank(prs)
     k = skeleton("table")
     page_title(s, title)
-    table(s, k["table"][0], k["table"][1], k["table"][2], rows, col_ratio=col_ratio)
+    frame = table(s, k["table"][0], k["table"][1], k["table"][2], rows, col_ratio=col_ratio)
+    got = frame.height / 914400.0
+    if got > k["table"][3] + 1e-6:               # 黙って読み取り文に重ねない
+        raise ValueError("表が %.2fin。枠は %.2fin。行を減らすか文言を短くする"
+                         % (got, k["table"][3]))
     if reading:
-        text(s, *k["reading"], lines=reading, size=SIZE["body"])
+        rd = reading_band(reading, k["reading"][0], k["reading"][2])
+        text(s, *rd, lines=reading, size=SIZE["body"])
     if source:
         page_source(s, source)
     return s
@@ -828,8 +963,10 @@ def slide_trend(prs, title, categories, series, reading, source=None, kind="line
     s = blank(prs)
     k = skeleton("trend")
     page_title(s, title)
-    chart(s, *k["exhibit"], categories=categories, series=series, kind=kind)
-    text(s, *k["reading"], lines=reading, size=SIZE["body"])
+    rd = reading_band(reading, k["reading"][0], k["reading"][2])
+    chart(s, k["exhibit"][0], k["exhibit"][1], k["exhibit"][2],
+          rd[1] - GAP - k["exhibit"][1], categories=categories, series=series, kind=kind)
+    text(s, *rd, lines=reading, size=SIZE["body"])
     if source:
         page_source(s, source)
     return s
@@ -841,10 +978,13 @@ def slide_structure(prs, title, cells, axes=None, source=None):
     s = blank(prs)
     k = skeleton("structure")
     page_title(s, title)
+    expect_count("象限", cells, len(k["cells"]))
+    head_h, pad = text_height(1, SIZE["h2"]), 0.18
     for (cx, cy, cw_, chh), (head, desc) in zip(k["cells"], cells):
         rect(s, cx, cy, cw_, chh, "panel")
-        text(s, cx + 0.25, cy + 0.2, cw_ - 0.5, 0.4, head, SIZE["h2"], bold=True)
-        text(s, cx + 0.25, cy + 0.75, cw_ - 0.5, chh - 1.0, desc, SIZE["body"])
+        text(s, cx + 0.25, cy + pad, cw_ - 0.5, head_h, head, SIZE["h2"], bold=True)
+        fit_text(s, cx + 0.25, cy + pad + head_h + 0.1, cw_ - 0.5,       # 升目は動かせない
+                 chh - pad * 2 - head_h - 0.1, desc, SIZE["body"])
     if axes:
         text(s, *k["y_axis"], lines=axes[0], size=SIZE["note"], color="muted",
              align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
@@ -861,9 +1001,13 @@ def slide_photo_full(prs, image, line, caption=None):
     k = skeleton("photo-full")
     picture(s, image, *k["photo"], fit="cover")
     scrim(s, *k["scrim"])
-    text(s, *k["line"], lines=line, size=SIZE["cover"], color="bg", bold=True)
+    lx, ly, lw, _ = k["line"]
+    text(s, lx, ly, lw, block_height(line, lw, SIZE["cover"]), lines=line,
+         size=SIZE["cover"], color="bg", bold=True)
     if caption:
-        text(s, *k["caption"], lines=caption, size=SIZE["note"], color="line")
+        cx, cy, cw_, _ = k["caption"]
+        ch_ = block_height(caption, cw_, SIZE["note"])
+        text(s, cx, H - 0.5 - ch_, cw_, ch_, lines=caption, size=SIZE["note"], color="line")
     return s
 
 
@@ -896,35 +1040,39 @@ def slide_roadmap(prs, title, milestones, note=None, source=None):
     s = blank(prs)
     k = skeleton("roadmap")
     page_title(s, title)
-    timeline(s, k["band"][0], k["band"][1], k["band"][2], milestones)
+    bottom = timeline(s, k["band"][0], k["band"][1], k["band"][2], milestones)
     if note:
-        text(s, *k["note"], lines=note, size=SIZE["body"])
+        place(s, note, k["note"][0], bottom + 0.6, k["note"][2])   # 節目のすぐ下
     if source:
         page_source(s, source)
     return s
 
 
-def slide_before_after(prs, title, before, after, reading=None, labels=("導入前", "導入後"), source=None):
-    """対比。変化そのものが主張のときに使う。"""
+def slide_before_after(prs, title, before, after, reading=None, labels=("導入前", "導入後"),
+                       source=None, weights=(1, 1.5)):
+    """対比。変化そのものが主張のときに使う。weights で主役の側を広く取る。"""
     s = blank(prs)
     k = skeleton("before-after")
     page_title(s, title)
-    before_after(s, *k["pair"], before=before, after=after, labels=labels)
+    rd = reading_band(reading, k["reading"][0], k["reading"][2]) if reading else None
+    pair_h = (rd[1] - GAP - k["pair"][1]) if rd else (BODY_END - k["pair"][1])
+    before_after(s, k["pair"][0], k["pair"][1], k["pair"][2], pair_h,
+                 before=before, after=after, labels=labels, weights=weights)
     if reading:
-        text(s, *k["reading"], lines=reading, size=SIZE["body"])
+        text(s, *rd, lines=reading, size=SIZE["body"])
     if source:
         page_source(s, source)
     return s
 
 
-def slide_metrics(prs, title, items, context=None, source=None):
-    """KPI を横に並べる。3つまで。数字が主張を支えるときだけ。"""
+def slide_metrics(prs, title, items, context=None, source=None, hero=0):
+    """KPI を横に並べる。3つまで。数字が主張を支えるときだけ。hero が主役の番号。"""
     s = blank(prs)
     k = skeleton("metrics")
     page_title(s, title)
-    metrics(s, k["row"][0], k["row"][1], k["row"][2], items)
+    bottom = metrics(s, k["row"][0], k["row"][1], k["row"][2], items, hero=hero)
     if context:
-        text(s, *k["context"], lines=context, size=SIZE["body"])
+        place(s, context, k["context"][0], bottom + 0.6, k["context"][2])   # 数字のすぐ下
     if source:
         page_source(s, source)
     return s
@@ -935,9 +1083,14 @@ def slide_closing(prs, title, asks, risks=None, contact=None):
     s = blank(prs)
     k = skeleton("closing")
     page_title(s, title)
-    text(s, *k["asks"], lines=asks, size=SIZE["body"])
+    bx, by, bw, _ = k["asks"]
+    hs = [block_height(asks, bw, SIZE["body"])]
     if risks:
-        text(s, *k["risks"], lines=risks, size=SIZE["body"], color="muted")
+        hs.append(block_height(risks, bw, SIZE["body"]))
+    ys = vstack(hs, top=by, bottom=BODY_END, gap=0.5)   # 収まらなければ止まる
+    text(s, bx, ys[0], bw, hs[0], asks, SIZE["body"])
+    if risks:
+        text(s, bx, ys[1], bw, hs[1], risks, SIZE["body"], color="muted")
     if contact:
         page_source(s, contact)
     return s
@@ -962,6 +1115,11 @@ if __name__ == "__main__":
 - **等分は既定ではない。** N 個を横に並べる前に、どれが主役かを決める。主役があるなら `emphasis(n, hero)`、本当に等価・無順序・等重みのときだけ `spread()`。主役が決まらない N 個は、横並びではなく表か箇条書きにする内容である。固定幅を N 回置くのは、どちらの場合も間違い（N が増えると右端が溢れる）。
 - **面（カード）は既定ではない。** `box_text()` と `rect()` の `fill` の既定は `None`（面なし）。内容に順序・量・関係・時間・二軸のどれかがあるなら、面で囲むより別の形式のほうがほぼ常に強い。角丸の面を並べてよいのは、項目が並列・無順序・等重みのときだけ。
 - **`MODE` は最初に決める。** 講演型と資料型でサイズが違う。途中で変えると型スケールが混ざる。lint の `--mode` にも同じ値を渡す。
+- **行送りは倍率で書かない。** `line_spacing = 1.4` は `<a:lnSpc><a:spcPct val="140000"/>` になり、見る側は「書体の行高 × 1.4」で描く。書体の行高は文字サイズの 1.2〜1.5 倍あり、和文書体ほど大きい。つまり同じ数字が環境ごとに違う高さになり、こちらの計算とも合わない。骨格は `Pt(size * LINE)`（`spcPts`）で**実寸**を書き出す。この一点で、手元では収まって受け手の環境では溢れる、という崩れ方がほぼ消える。
+- **箱の高さは測って決める。`block_height(lines, w, size)` を使う。** 折り返し後の行数を数え、段落の後ろのアキ（`PARA_GAP`）も足す。`text_height(len(rows), size)` は**段落数**しか数えないので、1行が2行に折れたぶんと、段落が増えたぶんのアキが足りなくなる。2行までは収まり3行目で溢れる、という崩れ方はここから来る。
+- **箱を動かせるなら `place()`、動かせないなら `fit_text()`。** `place()` は文言から高さを測って置き、下端を超えるなら例外を出す。`fit_text()` は 2×2 の升目のように寸法が先に決まっている場所で、**型スケールの段**（1ptずつではない）でサイズを下げ、下限でも入らなければ例外を出す。どちらも黙って溢れさせない。
+- **升目の数と中身の数が合わないときは `expect_count()` で止める。** `zip` は余りを黙って捨てる。原型が4行しか持たないところに5つ渡すと、5つ目が消えたデッキが何事もなく出来上がる。
+- **フッター行は `FOOT` の3つの持ち場に分ける。** 左＝出典、中＝章名や付録の印、右＝ページ番号。同じ y に自分で置くと重なる。
 - **縦に積むときは `vstack()`、下端の注記は `bottom_note()`、本文の範囲は `content_band()`。** 手で y を置くと、文言が1行増えた瞬間に重なる。`vstack()` は収まらないと例外を出すので、黙って重ならない。
 - **大きな数字は `fit_size()` でサイズを決める。** 「1,200万円」のように長い数字は 84pt では収まらない。本文には使わない（本文が収まらないときは文字を減らす）。
 - **図形に文字を入れるときは `box_text()` を使う。** `shape.text_frame.text = "..."` と直接書くと、書体・サイズ・和文書体・余白・縦位置がすべて PowerPoint の既定になり、受け手の環境で崩れる。文字は上に貼り付き、和文は代替書体になる。`box_text()` は枠に収まるサイズを選び、上下中央に置き、和文書体まで指定する。
@@ -974,6 +1132,7 @@ if __name__ == "__main__":
 - **ネイティブ図表の書式は既定が古い。** `chart.has_title`、`chart.has_legend`（単系列は False）、`plot.has_data_labels`、系列の色、目盛線の色（`value_axis.major_gridlines.format.line.color.rgb`）、`category_axis.tick_labels.font.size` を必ず設定する。縦の目盛線は消す。骨格の `bar_chart()` が最低限を行う。
 - **負の値の棒は、`<c:invertIfNegative val="0"/>` を系列に明示する。** python-pptx はこれを書かず、PowerPoint 以外のビューアでは負の棒が絶対値で上向きに描かれることがある（実測: −1.9 が +1.9 に見える）。受け手がそのビューアで開くと数値が違って見える。負の値があるときは項目名の位置を `XL_TICK_LABEL_POSITION.LOW` にして棒と重ねない。
 - **図表の文字にも書体を設定する。** `chart.font.name` と `chart.font.size` を設定し、和文ラベルがあるなら `txPr` に `a:ea` を追加する。
+- **表の行の高さは中身から決める。** 固定にすると、折り返したセルのある行だけが枠から出る。骨格の `table()` は列幅ごとに測って `tbl.rows[i].height` を入れ、`slide_table()` は枠を超えたら例外を出す。
 - **表のセルにも内側余白がある。** `cell.margin_left` などで統一する。表の既定スタイルは色が強いので、`tbl.first_row = False` にして自分で塗る。
 - **画像は縦横比を保つ。** 幅か高さの一方だけ指定する。トリミングは `picture.crop_left` などで行う。
 - **SVG と EMF は読めない。** PNG か JPEG に変換してから置く。

@@ -455,6 +455,46 @@ def _(g, p):
         g["box_text"](s, g["M"] + i * 4.15, g["BODY_Y"], 3.8, 1.6, label)
 
 
+_LONG = "在庫の滞留は拠点ごとの判断基準の違いから生まれており、輸送能力の不足では説明できない。"
+
+
+@case("長い文言でも原型が溢れない", forbid=["TEXT_OVERFLOW_LIKELY", "TEXT_OVERLAP",
+                                            "TEXT_SHAPE_COLLISION", "FONT_TOO_SMALL"])
+def _(g, p):
+    base(g, p)
+    g["slide_hero_number"](p, "滞留在庫が占める割合", "38.2%",
+                           "西日本3拠点の在庫のうち、90日以上まったく動いていないものの割合",
+                           [_LONG, _LONG], "出典: 実績")
+    g["slide_structure"](p, "拠点の位置づけを二軸で整理する",
+                         [("再編対象", _LONG), ("投資対象", _LONG),
+                          ("維持", _LONG), ("要観察", _LONG)],
+                         ("需要の伸び", "在庫の健全性"), "出典: 整理")
+    g["slide_metrics"](p, "見込む効果",
+                       [("12.4", "年間の削減見込み額（百万円、保管費と廃棄費の合計）"),
+                        ("15%", "滞留在庫比率"), ("3か月", "効果が出るまでの期間")],
+                       [_LONG], "出典: 試算")
+    g["slide_before_after"](p, "基準を変えると判断が変わる", [_LONG], [_LONG],
+                            [_LONG], source="出典: 試算")
+
+
+@case("折り返す表・時系列・表紙が崩れない", forbid=["TEXT_OVERFLOW_LIKELY", "TEXT_OVERLAP",
+                                                  "TEXT_SHAPE_COLLISION"])
+def _(g, p):
+    base(g, p)
+    g["slide_cover"](p, ["物流拠点の再編と在庫配置基準の見直しに関する経営会議への提案"],
+                     ["経営企画部 物流戦略チーム", "2026年9月6日", "社外秘"])
+    g["slide_table"](p, "拠点別の費用と効果",
+                     [["拠点と担当部門", "現状費用", "見込費用", "差分と備考"],
+                      ["近畿（西日本統括部が担当）", "42.1", "36.8", "-5.3 保管費の削減が主"],
+                      ["中国", "28.4", "25.1", "-3.3"]],
+                     [_LONG], [3, 1, 1, 3], "出典: 試算")
+    g["slide_roadmap"](p, "再編の行程",
+                       [("10月", "滞留在庫の棚卸しと引き当て可否の判定"),
+                        ("12月", "近畿拠点で在庫配置の基準を作り直す"),
+                        ("2月", "中国・九州の2拠点へ展開する")],
+                       [_LONG], "出典: 計画")
+
+
 @case("座標で線を引くと咎める", expect=["CONNECTOR_DIAGONAL"])
 def _(g, p):
     from pptx.util import Inches
@@ -548,6 +588,77 @@ def main():
         else:
             ok += 1
             print("ok  %s" % name)
+
+    # 行送りは実寸(spcPts)で書き出す。倍率(spcPct)だと見る側の書体で高さが変わり、
+    # こちらの高さ計算とも合わなくなる。
+    from pptx.oxml.ns import qn as _qn
+    scope = env(workdir)
+    spacing_prs = scope["new_deck"]()
+    spacing_slide = scope["blank"](spacing_prs)
+    scope["page_title"](spacing_slide, "行送りの書き出しを確かめるページの主張")
+    ppr = spacing_slide.shapes[0].text_frame.paragraphs[0]._p.find(_qn("a:pPr"))
+    if (ppr is not None
+            and ppr.find(_qn("a:lnSpc") + "/" + _qn("a:spcPts")) is not None
+            and ppr.find(_qn("a:lnSpc") + "/" + _qn("a:spcPct")) is None):
+        ok += 1
+        print("ok  行送りを実寸で書き出す")
+    else:
+        failures += 1
+        print("NG  行送りを実寸で書き出す")
+
+    # 原型の升目より多く渡したとき、黙って捨てない。
+    steps_prs = scope["new_deck"]()
+    steps_slide = scope["slide_steps"](steps_prs, "5つの手順を渡しても消えない",
+                                       [(str(i + 1), "%d月" % (i + 1), "手順 %d の内容" % (i + 1))
+                                        for i in range(5)])
+    texts = [sh.text_frame.text for sh in steps_slide.shapes if sh.has_text_frame]
+    dropped = []
+    for extra in (("見出し", lambda: scope["slide_comparison"](
+                       steps_prs, "3列渡す", ["A", "B", "C"], [["a"], ["b"], ["c"]])),
+                  ("象限", lambda: scope["slide_structure"](
+                       steps_prs, "5象限渡す", [("見出し", "説明")] * 5))):
+        try:
+            extra[1]()
+            dropped.append(extra[0])
+        except ValueError:
+            pass
+    if "5" in texts and "手順 5 の内容" in texts and not dropped:
+        ok += 1
+        print("ok  升目より多い中身を黙って捨てない")
+    else:
+        failures += 1
+        print("NG  升目より多い中身を黙って捨てない（捨てた: %s）" % (dropped or "-"))
+
+    # 入らない文言は、溢れたまま書き出さずに止める。
+    over = _LONG * 4
+    stop_prs = scope["new_deck"]()
+    stop_slide = scope["blank"](stop_prs)
+    stopped = 0
+    for build in (lambda: scope["slide_structure"](stop_prs, "入らない二軸",
+                                                   [("見出し", over)] * 4),
+                  lambda: scope["place"](stop_slide, [over], scope["M"], 5.6, 9.0),
+                  lambda: scope["slide_table"](stop_prs, "行が多すぎる表",
+                                               [["列"]] + [[over]] * 6)):
+        try:
+            build()
+        except ValueError:
+            stopped += 1
+    if stopped == 3:
+        ok += 1
+        print("ok  収まらない文言は黙って溢れさせずに止める")
+    else:
+        failures += 1
+        print("NG  収まらない文言は黙って溢れさせずに止める（止まった: %d/3）" % stopped)
+
+    # フッター行の3つの持ち場は重ならない（出典・章名/付録の印・ページ番号）。
+    foot = scope["FOOT"]
+    if (foot["source"][0] + foot["source"][1] <= foot["section"][0] + 1e-6
+            and foot["section"][0] + foot["section"][1] <= foot["page"][0] + 1e-6):
+        ok += 1
+        print("ok  フッター行の持ち場が重ならない")
+    else:
+        failures += 1
+        print("NG  フッター行の持ち場が重ならない")
 
     # 出力先はスキルの手順どおり、事前作成なしでも書き出せる。
     sample = os.path.join(workdir, "case-00.pptx")

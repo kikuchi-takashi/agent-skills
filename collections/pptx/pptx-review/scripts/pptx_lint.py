@@ -462,6 +462,7 @@ def paragraphs(tx_body):
             sizes.append(int(end.get("sz")) / 100.0)
         ppr = para.find(q("a", "pPr"))
         line_spacing = 1.2
+        line_pts = None                 # lnSpc を実寸(spcPts)で書いてあるときの1行の高さ
         before = after = 0.0
         algn, bullet, mar_l, indent, level = "l", None, 0.0, 0.0, 0
         if ppr is not None:
@@ -477,6 +478,9 @@ def paragraphs(tx_body):
             ln = ppr.find(q("a", "lnSpc") + "/" + q("a", "spcPct"))
             if ln is not None and ln.get("val"):
                 line_spacing = int(ln.get("val")) / 100000.0
+            ln_pts = ppr.find(q("a", "lnSpc") + "/" + q("a", "spcPts"))
+            if ln_pts is not None and ln_pts.get("val"):
+                line_pts = int(ln_pts.get("val")) / 100.0
             for tag, target in (("spcBef", "before"), ("spcAft", "after")):
                 pts = ppr.find(q("a", tag) + "/" + q("a", "spcPts"))
                 if pts is not None and pts.get("val"):
@@ -491,6 +495,7 @@ def paragraphs(tx_body):
             "runs": runs,
             "ea_missing": ea_missing,
             "line_spacing": line_spacing,
+            "line_pts": line_pts,
             "before": before,
             "after": after,
             "algn": algn,
@@ -637,6 +642,18 @@ def is_title(shape):
 MEASURER = TextMeasurer(None)
 
 
+PCT_LINE_FACTOR = 1.2       # lnSpc を倍率(spcPct)で書くと、PowerPoint は書体の
+                            # 行高（≒文字サイズの1.2倍。和文書体はさらに大きい）に
+                            # 掛ける。倍率指定は見る側で高さが変わるので、実寸で書く。
+
+
+def line_height(para, size):
+    """1行の高さ(pt)。lnSpc が実寸(spcPts)ならその値、倍率(spcPct)なら書体の行高に掛ける。"""
+    if para.get("line_pts"):
+        return max(para["line_pts"], size)
+    return size * max(para["line_spacing"], 1.0) * PCT_LINE_FACTOR
+
+
 def estimate_overflow(shape):
     """(ratio, confidence) を返す。ratio は必要高さ / 箱の高さ。"""
     box = shape["box"]
@@ -667,7 +684,7 @@ def estimate_overflow(shape):
             for segment in text.split("\n"):
                 width = MEASURER.width(segment, size)
                 lines += max(1, int(math.ceil(width / inner_w))) if segment else 1
-        needed += lines * size * max(para["line_spacing"], 1.0) + para["before"] + (para["after"] if idx < last else 0.0)
+        needed += lines * line_height(para, size) + para["before"] + (para["after"] if idx < last else 0.0)
     if needed <= 0:
         return None
     confidence = ("measured" if MEASURER.enabled else "estimate") if known else "size-inherited"

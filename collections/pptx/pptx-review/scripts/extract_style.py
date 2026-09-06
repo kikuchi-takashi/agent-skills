@@ -150,7 +150,10 @@ def extract(pkg):
                 elif role == "body":
                     if size:
                         body_sizes[round(size)] += 1
-                    body_spacing[round(para["line_spacing"], 2)] += 1
+                    # 実寸(spcPts)で書かれていれば、文字サイズに対する比に直して数える
+                    ratio = (para["line_pts"] / size if para.get("line_pts") and size
+                             else para["line_spacing"])
+                    body_spacing[round(ratio, 2)] += 1
                     if para["bullet"]:
                         bullets[para["bullet"]] += 1
                 else:

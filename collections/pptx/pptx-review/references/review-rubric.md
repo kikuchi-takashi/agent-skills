@@ -17,7 +17,7 @@
 | BROKEN_RELATIONSHIP / SLIDE_PART_MISSING / CONTENT_TYPE_MISSING / CONTENT_TYPES_MISSING | 重大 | パッケージの整合が壊れている（開けないか修復ダイアログ） |
 | PLACEHOLDER_TEXT | 重大 | 仮置き文言（ダミー、TODO、ここに入力、要確認 など）が残っている |
 | OUT_OF_CANVAS | 重大 | 要素がスライドの外に出ている |
-| TEXT_OVERFLOW_LIKELY | 重大 | 文字が箱に収まらない見込み（推定。画像で確定） |
+| TEXT_OVERFLOW_LIKELY | 重大 | 文字が箱に収まらない見込み（推定。画像で確定）。行送りが倍率（`spcPct`）指定のデッキは、見る側が書体の行高に掛けるため実測より高くなる。lint は文字サイズの1.2倍を仮定して数えるので、和文書体ではさらに溢れうる |
 | FONT_TOO_SMALL | 重大 | 出典以外の文字が下限未満（注記を含む下限: 講演型 14pt、資料型 12pt。出典は 9pt）。本文の下限（講演型 18pt、資料型 14pt）は目視で確認 |
 | TEXT_OVERFLOW_POSSIBLE | 重要 | 収まりがぎりぎり。画像で確定 |
 | TEXT_OVERLAP | 重要 | テキスト要素同士の重なり |

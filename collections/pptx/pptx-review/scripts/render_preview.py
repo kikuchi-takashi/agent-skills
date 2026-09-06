@@ -510,7 +510,7 @@ class Renderer(object):
         inner_w = max(w - insets["l"] - insets["r"], 0.05)
         inner_y = y + insets["t"]
         inner_h = max(h - insets["t"] - insets["b"], 0.05)
-        lines = []  # (units, size_pt, line_spacing, algn, indent_in)
+        lines = []  # (units, size_pt, line_height_pt, algn, indent_in)
         for para in paras:
             size = max(para["sizes"]) if para["sizes"] else default_size
             units = self.units(para, size)
@@ -521,13 +521,13 @@ class Renderer(object):
             if not para_lines:
                 para_lines = [[]]
             for k, ln in enumerate(para_lines):
-                lines.append({"units": ln, "size": size, "ls": max(para["line_spacing"], 1.0), "algn": para["algn"],
+                lines.append({"units": ln, "size": size, "lh": L.line_height(para, size), "algn": para["algn"],
                               "x_off": para["mar_l"] + (first_indent if k == 0 else 0.0),
                               "bullet": bullet if k == 0 else None, "before": para["before"] if k == 0 else 0.0,
                               "after": para["after"] if k == len(para_lines) - 1 else 0.0})
         if lines:
             lines[-1]["after"] = 0.0
-        total_pt = sum(l["size"] * l["ls"] + l["before"] + l["after"] for l in lines)
+        total_pt = sum(l["lh"] + l["before"] + l["after"] for l in lines)
         total_in = total_pt / 72.0
         if anchor == "ctr":
             cur = inner_y + max((inner_h - total_in) / 2.0, 0)
@@ -537,7 +537,7 @@ class Renderer(object):
             cur = inner_y
         for ln in lines:
             cur += ln["before"] / 72.0
-            line_h = ln["size"] * ln["ls"] / 72.0
+            line_h = ln["lh"] / 72.0
             width_in = sum(u["w"] for u in ln["units"]) / 72.0
             avail = inner_w - ln["x_off"]
             if ln["algn"] == "ctr":
