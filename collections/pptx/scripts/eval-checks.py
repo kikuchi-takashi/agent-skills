@@ -534,6 +534,20 @@ def _(g, p):
     g["text"](s, 0.8, 4.6, 8.0, 1.0, ["写真の上に置いた一文。"], g["SIZE"]["h2"], color="bg")
 
 
+@case("図の注記は枠の外に出る", forbid=["TEXT_SHAPE_COLLISION", "TEXT_OVERLAP",
+                                       "TEXT_CONTRAST_LOW", "OUT_OF_CANVAS"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "西日本の3拠点だけが基準を大きく上回るページの主張")
+    ex = (g["M"], 2.2, 8.0, 3.6)
+    g["chart"](s, ex[0], ex[1], ex[2], ex[3], ["東北", "関東", "中部", "近畿", "中国", "九州"],
+               [("在庫回転日数", (16.2, 15.1, 17.8, 24.3, 26.1, 25.4))])
+    g["annotate"](s, ex, (7.4, 2.9), "この3拠点が基準の18日を超える")
+    g["annotate"](s, ex, (2.2, 5.4), "基準内")
+    g["page_source"](s, "出典: 社内WMS")
+
+
 @case("タイトルを後から置くと咎める", expect=["READING_ORDER_TITLE_LATE"])
 def _(g, p):
     base(g, p)
@@ -919,6 +933,24 @@ def main():
     else:
         failures += 1
         print("NG  構成の欠落を生成前に拾う（good=%d bad=%d）" % (r_good.returncode, r_bad.returncode))
+
+    # 注記が図の外に置けないときは、黙って重ねずに止まる。
+    scope = env(workdir)
+    anno_prs = scope["new_deck"]()
+    anno_slide = scope["blank"](anno_prs)
+    tight = (scope["M"], scope["BODY_Y"], scope["W"] - 2 * scope["M"],
+             scope["BODY_END"] - scope["BODY_Y"])          # 本文領域いっぱいの図
+    try:
+        scope["annotate"](anno_slide, tight, (6.0, 4.0), "外に出す余地が無い注記")
+        anno_stops = False
+    except ValueError:
+        anno_stops = True
+    if anno_stops:
+        ok += 1
+        print("ok  注記を図の外に置けなければ止まる")
+    else:
+        failures += 1
+        print("NG  注記を図の外に置けなければ止まる")
 
     # 折り返しの数え方: 骨格・lint・描画の三者が同じ行数を出す。
     # 割り算（全幅÷行幅）は行末の余りを数え落とし、実際より少なく出る。

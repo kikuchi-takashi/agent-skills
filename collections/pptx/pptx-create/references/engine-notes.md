@@ -840,6 +840,63 @@ def before_after(slide, x, y, w, h, before, after, labels=("導入前", "導入�
     return y + h + 0.5
 
 
+def annotate(slide, exhibit, at, note, size=None, color="accent", w=2.2, gap=0.15):
+    """展示物の1点を指して短い注記を置く。**図が主張を運ぶようにする道具。**
+
+    「この3拠点が基準を超える」のように、図のどこを見ればよいかを言う。
+    図表を置いただけでは、見る側は何を読み取ればよいか分からない。
+
+    exhibit は図の枠 (x, y, 幅, 高さ)——`skeleton()` が返すものをそのまま渡す。
+    at は指したい点 (x, y)。**注記は必ず枠の外に出す**。どの辺に出すかは、
+    指した点から一番近い外側の辺を自分で選ぶので、side を渡す必要は無い。
+    枠の中に置くと図に重なり、lint の TEXT_SHAPE_COLLISION になる。
+
+    **汎用の矢印ではない。** 2点間を自由に結ぶ線が要ると感じたら、それは
+    図形どうしの関係なので connect() を使う。
+    """
+    size = size or SIZE["note"]
+    ex, ey, ew, eh = exhibit
+    ax, ay = at
+    h = block_height(note, w, size)
+
+    def placement(side):
+        if side == "right":
+            end = (ex + ew + gap, ay)
+            return end, (end[0] + 0.1, ay - h / 2), PP_ALIGN.LEFT
+        if side == "left":
+            end = (ex - gap, ay)
+            return end, (end[0] - 0.1 - w, ay - h / 2), PP_ALIGN.RIGHT
+        if side == "up":
+            end = (ax, ey - gap)
+            return end, (ax - w / 2, end[1] - h), PP_ALIGN.CENTER
+        end = (ax, ey + eh + gap)
+        return end, (ax - w / 2, end[1]), PP_ALIGN.CENTER
+
+    # 近い辺から順に試し、**本文領域に収まり、図とも重ならない**最初の辺を採る。
+    # 一番近い辺をそのまま使うと、上に出したときにタイトル帯に食い込む。
+    order = sorted(("left", "right", "up", "down"),
+                   key=lambda k: {"left": ax - ex, "right": (ex + ew) - ax,
+                                  "up": ay - ey, "down": (ey + eh) - ay}[k])
+    chosen = None
+    for side in order:
+        end, (tx, ty), align = placement(side)
+        if (M <= tx and tx + w <= W - M and BODY_Y <= ty and ty + h <= FOOT_Y
+                and not (tx < ex + ew and tx + w > ex and ty < ey + eh and ty + h > ey)):
+            chosen = (end, tx, ty, align)
+            break
+    if chosen is None:
+        raise ValueError("注記「%s」を図の外に置けない。図を小さくするか注記を短くする" % note[:16])
+    end, tx, ty, align = chosen
+    line = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(ax), Inches(ay),
+                                      Inches(end[0]), Inches(end[1]))
+    line.line.color.rgb = RGBColor.from_string(C[color])
+    line.line.width = Pt(1.0)
+    # **文字は強調色にしない。** 注記の大きさ（12〜14pt）で強調色を使うと、
+    # 地とのコントラストが本文の下限 4.5:1 を割る。指し示すのは線の仕事。
+    text(slide, tx, ty, w, h, note, size, color="text", align=align)
+    return line
+
+
 def motif_legend(slide, meaning, x=M, y=None, w=5.0):
     """モチーフの凡例。**主題由来の印を初めて出すページに、必ず1行添える。**
 
@@ -1209,6 +1266,7 @@ if __name__ == "__main__":
 - **縦に積むときは `vstack()`、下端の注記は `bottom_note()`、本文の範囲は `content_band()`。** 手で y を置くと、文言が1行増えた瞬間に重なる。`vstack()` は収まらないと例外を出すので、黙って重ならない。
 - **大きな数字は `fit_size()` でサイズを決める。** 「1,200万円」のように長い数字は 84pt では収まらない。本文には使わない（本文が収まらないときは文字を減らす）。
 - **図形に文字を入れるときは `box_text()` を使う。** `shape.text_frame.text = "..."` と直接書くと、書体・サイズ・和文書体・余白・縦位置がすべて PowerPoint の既定になり、受け手の環境で崩れる。文字は上に貼り付き、和文は代替書体になる。`box_text()` は枠に収まるサイズを選び、上下中央に置き、和文書体まで指定する。
+- **図の1点を指すときは `annotate()` を使う。** 図の枠と指す点を渡すと、近い辺から順に試して**本文領域に収まり図とも重ならない**位置に注記を置く。置けなければ例外を出す。文字は強調色にしない——注記の大きさで強調色を使うと地とのコントラストが本文の下限 4.5:1 を割る（指し示すのは線の仕事）。
 - **図形を線で結ぶときは `connect()` を使う。** `add_connector` を座標で直接呼ぶと、端点が辺からずれ、段違いのときに斜め線が空間を横切る。`connect()` は向かい合う辺を自動で選び、ずれていれば直角に折り、端点を必ず辺に接させる。
 - **プレースホルダのレイアウトを使うと、テーマ由来の書式が混ざる。** 新規作成は白紙レイアウト（index 6）に textbox と shape で組む。テンプレを使うときだけレイアウトのプレースホルダを使う。
 - **既定の図形には影と枠線がつく。** `shape.shadow.inherit = False`、`shape.line.fill.background()` を毎回呼ぶ。
