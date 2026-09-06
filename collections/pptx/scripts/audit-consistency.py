@@ -199,19 +199,24 @@ def check_cross_references():
         for path in (ROOT / skill).rglob("*.md"):
             if path.name != "SKILL.md":
                 known.setdefault(path.name, []).append(skill)
-    for skill in SKILLS:
-        for doc in (ROOT / skill).rglob("*.md"):
-            text = doc.read_text()
-            for name in sorted(set(re.findall(r"`(?:[\w./-]*/)?([\w-]+\.md)`", text))):
-                if name in SKIP_DOCS:
-                    continue
-                if name not in known:
-                    note("%s/%s が実在しない文書 %s を参照している" % (skill, doc.name, name))
-                    continue
-                owners = known[name]
-                if skill not in owners and not any(o in text for o in owners):
-                    note("%s/%s が %s を参照しているが、持ち主（%s）を書いていない"
-                         % (skill, doc.name, name, "・".join(owners)))
+    sources = [(skill, doc) for skill in SKILLS for doc in (ROOT / skill).rglob("*.md")]
+    # コレクション直下の文書（束ね方の例・README）も同じ検査にかける。ここが
+    # 検査の外にあると、スキルを分けたときの参照漏れに気づけない。
+    sources += [(None, ROOT / name) for name in ("instruction.md", "README.md")
+                if (ROOT / name).exists()]
+    for skill, doc in sources:
+        text = doc.read_text()
+        for name in sorted(set(re.findall(r"`(?:[\w./-]*/)?([\w-]+\.md)`", text))):
+            if name in SKIP_DOCS:
+                continue
+            where = "%s/%s" % (skill, doc.name) if skill else doc.name
+            if name not in known:
+                note("%s が実在しない文書 %s を参照している" % (where, name))
+                continue
+            owners = known[name]
+            if skill not in owners and not any(o in text for o in owners):
+                note("%s が %s を参照しているが、持ち主（%s）を書いていない"
+                     % (where, name, "・".join(owners)))
 
 
 def check_chart_kinds():
