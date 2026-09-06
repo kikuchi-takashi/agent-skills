@@ -52,7 +52,7 @@ skills install pptx-create --root collections --target .installed/skills
 skills install collection:sdd --root collections --target ~/.agents/skills
 ```
 
-`install` は既存スキルディレクトリを上書きしません。コレクションとbundleの一括導入では全出力先を先に検査し、衝突が1件でもあれば何もコピーせず停止します。内容を確認して置き換える場合だけ `--force` を指定してください。
+`install` は既存スキルディレクトリを上書きしません。コレクションとbundleの一括導入では全スキルを一時領域へコピーしてから切り替えます。出力先の衝突が1件でもあれば何も変更せず停止し、コピーまたは切り替えでエラーが起きた場合も旧状態へロールバックします。内容を確認して置き換える場合だけ `--force` を指定してください。
 
 ## Codex / Claude Code へのインストール（npx）
 

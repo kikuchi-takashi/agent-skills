@@ -1,9 +1,12 @@
 import io
 import json
+import os
+import shutil
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 from agent_skills_marketplace.cli import main
 from agent_skills_marketplace.marketplace import build_index, install
@@ -103,6 +106,119 @@ class MarketplaceTests(unittest.TestCase):
 
             self.assertFalse((target / "demo-create").exists())
 
+    def test_bundle_install_copy_failure_leaves_existing_skills_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "collections"
+            bundled = SKILL.replace(
+                '  version: "1.0.0"',
+                '  version: "1.0.0"\n  bundle: demo-suite',
+            )
+            self.make_skill(root, name="demo-create", text=bundled)
+            self.make_skill(root, name="demo-review", text=bundled)
+            target = Path(directory) / "installed"
+            for name in ("demo-create", "demo-review"):
+                existing = target / name
+                existing.mkdir(parents=True)
+                (existing / "old.txt").write_text("old", encoding="utf-8")
+
+            real_copytree = shutil.copytree
+            copies = 0
+
+            def fail_second_copy(source, destination):
+                nonlocal copies
+                copies += 1
+                if copies == 2:
+                    raise OSError("simulated copy failure")
+                return real_copytree(source, destination)
+
+            with mock.patch(
+                "agent_skills_marketplace.marketplace.shutil.copytree",
+                side_effect=fail_second_copy,
+            ):
+                with self.assertRaisesRegex(OSError, "simulated copy failure"):
+                    install("demo-create", root, target, force=True)
+
+            for name in ("demo-create", "demo-review"):
+                self.assertEqual(
+                    (target / name / "old.txt").read_text(encoding="utf-8"), "old"
+                )
+
+    def test_bundle_install_commit_failure_restores_all_existing_skills(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "collections"
+            bundled = SKILL.replace(
+                '  version: "1.0.0"',
+                '  version: "1.0.0"\n  bundle: demo-suite',
+            )
+            self.make_skill(root, name="demo-create", text=bundled)
+            self.make_skill(root, name="demo-review", text=bundled)
+            target = Path(directory) / "installed"
+            for name in ("demo-create", "demo-review"):
+                existing = target / name
+                existing.mkdir(parents=True)
+                (existing / "old.txt").write_text(name, encoding="utf-8")
+
+            real_replace = os.replace
+
+            def fail_second_commit(source, destination):
+                source_path = Path(source)
+                if (
+                    source_path.parent.name == "staged"
+                    and source_path.name == "demo-review"
+                ):
+                    raise OSError("simulated commit failure")
+                return real_replace(source, destination)
+
+            with mock.patch(
+                "agent_skills_marketplace.marketplace.os.replace",
+                side_effect=fail_second_commit,
+            ):
+                with self.assertRaisesRegex(OSError, "simulated commit failure"):
+                    install("demo-create", root, target, force=True)
+
+            for name in ("demo-create", "demo-review"):
+                self.assertEqual(
+                    (target / name / "old.txt").read_text(encoding="utf-8"), name
+                )
+
+    def test_failed_rollback_retains_recovery_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "collections"
+            bundled = SKILL.replace(
+                '  version: "1.0.0"',
+                '  version: "1.0.0"\n  bundle: demo-suite',
+            )
+            self.make_skill(root, name="demo-create", text=bundled)
+            self.make_skill(root, name="demo-review", text=bundled)
+            target = Path(directory) / "installed"
+            for name in ("demo-create", "demo-review"):
+                existing = target / name
+                existing.mkdir(parents=True)
+                (existing / "old.txt").write_text(name, encoding="utf-8")
+
+            real_replace = os.replace
+
+            def fail_commit_and_restore(source, destination):
+                source_path = Path(source)
+                if source_path.name == "demo-review" and source_path.parent.name in (
+                    "staged",
+                    "backup",
+                ):
+                    raise OSError("simulated transaction failure")
+                return real_replace(source, destination)
+
+            with mock.patch(
+                "agent_skills_marketplace.marketplace.os.replace",
+                side_effect=fail_commit_and_restore,
+            ):
+                with self.assertRaisesRegex(OSError, "recovery data retained at"):
+                    install("demo-create", root, target, force=True)
+
+            transactions = list(target.glob(".skills-install-*"))
+            self.assertEqual(len(transactions), 1)
+            retained = transactions[0] / "backup" / "demo-review" / "old.txt"
+            self.assertEqual(retained.read_text(encoding="utf-8"), "demo-review")
+
     def test_index_exposes_bundle(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "collections"
@@ -133,6 +249,20 @@ class MarketplaceTests(unittest.TestCase):
                 install("demo-skill", root, target)
 
             self.assertEqual(marker.read_text(encoding="utf-8"), "user data")
+
+    def test_install_refuses_to_replace_broken_symlink_without_force(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "collections"
+            target = Path(directory) / "installed"
+            self.make_skill(root)
+            target.mkdir()
+            destination = target / "demo-skill"
+            destination.symlink_to(Path(directory) / "missing")
+
+            with self.assertRaises(FileExistsError):
+                install("demo-skill", root, target)
+
+            self.assertTrue(destination.is_symlink())
 
     def test_force_replaces_existing_skill_directory(self):
         with tempfile.TemporaryDirectory() as directory:

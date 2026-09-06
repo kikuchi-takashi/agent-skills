@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import tempfile
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, List
@@ -62,6 +64,17 @@ def _ensure_target_outside_root(root: Path, target: Path) -> None:
         )
 
 
+def _remove_installed_path(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(str(path))
+
+
+def _path_exists(path: Path) -> bool:
+    return path.exists() or path.is_symlink()
+
+
 def install(query: str, root: Path, target: Path, force: bool = False) -> List[Path]:
     records = discover(root)
     if query.startswith("collection:"):
@@ -94,18 +107,91 @@ def install(query: str, root: Path, target: Path, force: bool = False) -> List[P
 
     if not force:
         existing = [
-            destination for _, destination in destinations if destination.exists()
+            destination for _, destination in destinations if _path_exists(destination)
         ]
         if existing:
             raise FileExistsError(
                 "destination exists: {0}; use --force to replace it".format(existing[0])
             )
 
+    if target.exists() and not target.is_dir():
+        raise NotADirectoryError("install target is not a directory: {0}".format(target))
+
+    target_existed = target.exists()
     target.mkdir(parents=True, exist_ok=True)
-    installed: List[Path] = []
-    for record, destination in destinations:
-        if destination.exists():
-            shutil.rmtree(str(destination))
-        shutil.copytree(str(record.path.parent), str(destination))
-        installed.append(destination)
-    return installed
+    transaction = None
+    preserve_transaction = False
+    try:
+        transaction = Path(
+            tempfile.mkdtemp(prefix=".skills-install-", dir=str(target))
+        )
+        staged_root = transaction / "staged"
+        backup_root = transaction / "backup"
+        staged_root.mkdir()
+        backup_root.mkdir()
+
+        # Complete every potentially failing copy before changing destinations.
+        for record, _ in destinations:
+            shutil.copytree(str(record.path.parent), str(staged_root / record.name))
+
+        # Close the gap between the initial preflight and the commit phase.
+        if not force:
+            existing = [
+                destination
+                for _, destination in destinations
+                if _path_exists(destination)
+            ]
+            if existing:
+                raise FileExistsError(
+                    "destination exists: {0}; use --force to replace it".format(
+                        existing[0]
+                    )
+                )
+
+        backups: List[tuple[Path, Path]] = []
+        installed: List[Path] = []
+        try:
+            if force:
+                for record, destination in destinations:
+                    if _path_exists(destination):
+                        backup = backup_root / record.name
+                        os.replace(str(destination), str(backup))
+                        backups.append((backup, destination))
+
+            for record, destination in destinations:
+                staged = staged_root / record.name
+                os.replace(str(staged), str(destination))
+                installed.append(destination)
+        except OSError as install_error:
+            rollback_errors = []
+            for destination in reversed(installed):
+                try:
+                    _remove_installed_path(destination)
+                except OSError as exc:
+                    rollback_errors.append(str(exc))
+            for backup, destination in reversed(backups):
+                try:
+                    os.replace(str(backup), str(destination))
+                except OSError as exc:
+                    rollback_errors.append(str(exc))
+            if rollback_errors:
+                preserve_transaction = True
+                raise OSError(
+                    "install failed: {0}; rollback failed: {1}; "
+                    "recovery data retained at {2}".format(
+                        install_error, "; ".join(rollback_errors), transaction
+                    )
+                ) from install_error
+            raise
+
+        return installed
+    except Exception:
+        if not target_existed:
+            try:
+                target.rmdir()
+            except OSError:
+                pass
+        raise
+    finally:
+        if transaction is not None and not preserve_transaction:
+            shutil.rmtree(str(transaction), ignore_errors=True)
