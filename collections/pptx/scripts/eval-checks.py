@@ -534,6 +534,36 @@ def _(g, p):
     g["text"](s, 0.8, 4.6, 8.0, 1.0, ["写真の上に置いた一文。"], g["SIZE"]["h2"], color="bg")
 
 
+@case("新しい原型（選択肢・差分・声・目次・写真の並置）",
+      forbid=["TEXT_OVERFLOW_LIKELY", "TEXT_OVERLAP", "TEXT_SHAPE_COLLISION",
+              "TEXT_CONTRAST_LOW", "FONT_TOO_SMALL", "OUT_OF_CANVAS"])
+def _(g, p):
+    import io
+    from PIL import Image
+    base(g, p)
+    g["slide_options"](p, "3案のうち、B案を推したい",
+                       [("B案: 在庫配置の見直し", ["効果が出るまで3か月", "追加費用はほぼ無い"]),
+                        ("A案: 輸送便の増発", ["即効性がある", "輸送費が18%増える"]),
+                        ("C案: 拠点の統合", ["効果は最も大きい", "1年以上かかる"])],
+                       ["決めどころは、来期中に効果を出す必要があるかどうかである。"], "出典: 試算")
+    g["slide_variance"](p, "棚卸しは予定どおりだが、基準の作り直しが遅れている",
+                        ["10月 棚卸し", "11月 基準の作り直し"],
+                        ["10月 完了", "11月 草案まで"],
+                        ["基準の作り直しが1か月遅れ"],
+                        ["近畿の担当を1名増やしたい。"], "出典: 週次進捗")
+    g["slide_quote"](p, "「西の倉庫は物はあるのに出ない」", "近畿拠点長", "出典: ヒアリング")
+    g["slide_agenda"](p, "本日は、在庫配置の見直しについて判断をいただきたい",
+                      ["現状の課題", "原因の特定", "3つの選択肢", "依頼事項"], current=2)
+    photos = []
+    for i, c in enumerate([(120, 130, 140), (90, 110, 100)]):
+        buf = io.BytesIO()
+        Image.new("RGB", (900, 600), c).save(buf, "PNG")
+        buf.seek(0)
+        photos.append(buf)
+    g["slide_photo_grid"](p, "同じ通路が、繁忙期には仮置きで塞がる",
+                          photos, ["平常時（6月）", "繁忙期（8月）"], "出典: 撮影")
+
+
 @case("図の注記は枠の外に出る", forbid=["TEXT_SHAPE_COLLISION", "TEXT_OVERLAP",
                                        "TEXT_CONTRAST_LOW", "OUT_OF_CANVAS"])
 def _(g, p):

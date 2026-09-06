@@ -314,6 +314,41 @@ def skeleton(kind, n=None):
                 "row": (band_x, band_y + 0.4, band_w, 2.0),
                 "context": (band_x, band_y + 3.0, band_w, BODY_END - band_y - 3.0),
                 "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
+    if kind == "options":                    # 選択肢: N案を並べ、推す案を広く取る
+        n = n or 3
+        cols = emphasis(n, 0, x=band_x, total_w=band_w, ratio=1.35, gap=0.35)
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "columns": [(cx, band_y, cw_, band_h - 1.3) for cx, cw_ in cols],
+                "decision": (band_x, band_y + band_h - 1.1, band_w, 0.9),
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
+    if kind == "variance":                   # 予定と実績と差分。差分が主役
+        plan, actual, diff = emphasis(3, 2, x=band_x, total_w=band_w, ratio=1.5, gap=0.4)
+        head_h = text_height(1, SIZE["note"])
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "plan": (plan[0], band_y, plan[1], band_h - 1.3),
+                "actual": (actual[0], band_y, actual[1], band_h - 1.3),
+                "diff": (diff[0], band_y, diff[1], band_h - 1.3),
+                "head_h": head_h,
+                "action": (band_x, band_y + band_h - 1.1, band_w, 0.9),
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
+    if kind == "quote":                      # 声: 引用が主役。話者は小さく添える
+        return {"line": (1.6, 2.4, W - 3.2, 2.6),
+                "who": (1.6, 5.3, W - 3.2, 0.8),
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
+    if kind == "agenda":                     # 目次: 章の題を縦に積む。12枚超のときだけ
+        n = n or 4
+        row_h = text_height(1, SIZE["h2"])
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "rows": [(M + 0.8, y, band_w - 0.8, row_h)
+                         for y in vstack([row_h] * n, top=band_y + 0.4)]}
+    if kind == "photo-grid":                 # 写真の並置: 場所や状態を見比べる
+        n = n or 2
+        cols = spread(n, band_x, band_w, gap=0.35)
+        cap_h = text_height(1, SIZE["note"])
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "photos": [(cx, band_y, cw_, band_h - cap_h - 0.5) for cx, cw_ in cols],
+                "captions": [(cx, band_y + band_h - cap_h - 0.3, cw_, cap_h) for cx, cw_ in cols],
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "table":
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "table": (band_x, band_y, band_w, band_h - 1.6),
@@ -1215,6 +1250,117 @@ def slide_metrics(prs, title, items, context=None, source=None, hero=0):
     bottom = metrics(s, k["row"][0], k["row"][1], k["row"][2], items, hero=hero)
     if context:
         place(s, context, k["context"][0], bottom + 0.6, k["context"][2])   # 数字のすぐ下
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_options(prs, title, options, decision, source=None, recommend=0):
+    """選択肢を並べて選ばせる。3〜4案まで。**推す案を隠さない。**
+
+    options は [(案の名前, [行...]), ...]。recommend の案だけ広く取る。
+    等分に並べると「どれでもいい」に見え、相手は決められない。
+    決めどころ（何を基準に選ぶか）を下に一文置く。
+    """
+    s = blank(prs)
+    k = skeleton("options", len(options))
+    page_title(s, title)
+    expect_count("選択肢", options, len(k["columns"]))
+    head_h = text_height(1, SIZE["h2"])
+    for i, ((cx, cy, cw_, chh), (name, lines)) in enumerate(zip(k["columns"], options)):
+        lead = (i == recommend)
+        if lead:
+            rect(s, cx, cy, cw_, chh, "panel")
+        pad = 0.25 if lead else 0.0
+        # 推す案は**面と太字**で示す。強調色は使わない——見出しの大きさ（16〜20pt）
+        # では、淡い面の上で本文の下限 4.5:1 を割る
+        text(s, cx + pad, cy + pad, cw_ - pad * 2, head_h, name, SIZE["h2"], bold=lead)
+        fit_text(s, cx + pad, cy + pad + head_h + 0.15, cw_ - pad * 2,
+                 chh - pad * 2 - head_h - 0.15, lines, SIZE["body"],
+                 color="text" if lead else "muted")
+    place(s, decision, k["decision"][0], k["decision"][1], k["decision"][2])
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_variance(prs, title, plan, actual, diff, action=None, source=None,
+                   labels=("予定", "実績", "差分")):
+    """予定と実績と差分。**差分が主役**で、そこだけ広く取る。
+
+    予定と実績を並べただけで終わらせない。見る側が知りたいのは差であり、
+    差から何をするかである。
+    """
+    s = blank(prs)
+    k = skeleton("variance")
+    page_title(s, title)
+    head_h = k["head_h"]
+    for key, label, lines, lead in (("plan", labels[0], plan, False),
+                                    ("actual", labels[1], actual, False),
+                                    ("diff", labels[2], diff, True)):
+        cx, cy, cw_, chh = k[key]
+        if lead:
+            rect(s, cx, cy, cw_, chh, "panel")
+        pad = 0.25 if lead else 0.0
+        text(s, cx + pad, cy + pad, cw_ - pad * 2, head_h, label, SIZE["note"],
+             color="text" if lead else "muted", bold=lead)
+        fit_text(s, cx + pad, cy + pad + head_h + 0.15, cw_ - pad * 2,
+                 chh - pad * 2 - head_h - 0.15, lines, SIZE["body"],
+                 color="text" if lead else "muted")
+    if action:
+        place(s, action, k["action"][0], k["action"][1], k["action"][2])
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_quote(prs, body, who, source=None):
+    """声。引用が主役で、話者は小さく添える。1デッキで1〜2回まで。
+
+    引用符を大きく飾らない。字下げと大きさで引用だと示す。
+    """
+    s = blank(prs)
+    k = skeleton("quote")
+    lx, ly, lw, lh = k["line"]
+    fit_text(s, lx, ly, lw, lh, body, 28, min_size=SIZE["h2"], anchor=MSO_ANCHOR.MIDDLE)
+    text(s, *k["who"], lines=who, size=SIZE["note"], color="muted")
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_agenda(prs, title, sections, current=None):
+    """目次。**12枚を超えるデッキでだけ置く。** 章の題を縦に積む。
+
+    current を渡すと、その章だけ主色になる（章扉の代わりに進行を示す）。
+    タイトルは「目次」ではなく、このデッキが何を決める場かを一文で書く。
+    """
+    s = blank(prs)
+    k = skeleton("agenda", len(sections))
+    page_title(s, title)
+    for i, ((rx, ry, rw, rh), name) in enumerate(zip(k["rows"], sections)):
+        lead = (current is not None and i == current)
+        text(s, rx - 0.8, ry, 0.7, rh, "%02d" % (i + 1), SIZE["h2"],
+             color="text" if lead else "muted", bold=lead, align=PP_ALIGN.RIGHT)
+        text(s, rx, ry, rw, rh, name, SIZE["h2"],
+             color="text" if lead else "muted", bold=lead)
+    return s
+
+
+def slide_photo_grid(prs, title, photos, captions, source=None):
+    """写真の並置。同じ枠で撮った複数の状態や場所を見比べる。2〜3枚。
+
+    雰囲気のための写真を並べない。**見比べる理由があるときだけ。**
+    """
+    s = blank(prs)
+    k = skeleton("photo-grid", len(photos))
+    page_title(s, title)
+    expect_count("写真", photos, len(k["photos"]))
+    expect_count("説明", captions, len(k["captions"]))
+    for box, path in zip(k["photos"], photos):
+        picture(s, path, *box, fit="cover")
+    for box, cap in zip(k["captions"], captions):
+        text(s, *box, lines=cap, size=SIZE["note"], color="muted")
     if source:
         page_source(s, source)
     return s
