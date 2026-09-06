@@ -35,7 +35,7 @@
 ## 3候補を生成して比較する
 
 ```bash
-python3 <skill>/scripts/generate_palette.py deck/palette-intent.json \
+python3 <skills>/pptx-design/scripts/generate_palette.py deck/palette-intent.json \
   --candidates-out deck/qa/palette-candidates.json \
   --preview-pptx deck/qa/palette-candidates.pptx \
   --select auto \
