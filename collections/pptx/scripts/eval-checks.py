@@ -1029,6 +1029,17 @@ def main():
                     and miss.returncode == 1 and miss_names == [])
     except (ValueError, KeyError):
         motif_ok = False
+    # 語彙を増やしたときに、主題性の薄い文へ誤って当たらないこと
+    neutral_hits = 0
+    for text in ("新しい人事制度の説明", "会社のミッションと価値観", "来期の組織体制",
+                 "福利厚生の見直し", "オフィス移転のお知らせ"):
+        r = subprocess.run([sys.executable, str(motif), "--json", text],
+                           capture_output=True, text=True)
+        try:
+            neutral_hits += len(json.loads(r.stdout)["candidates"])
+        except ValueError:
+            neutral_hits += 99
+    motif_ok = motif_ok and neutral_hits == 0
     if motif_ok:
         ok += 1
         print("ok  署名の候補は当たれば出し、弱ければ出さない")

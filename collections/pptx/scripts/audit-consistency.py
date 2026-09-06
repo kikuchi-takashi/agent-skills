@@ -188,6 +188,33 @@ def check_bundle():
             note("%s が metadata.bundle: pptx-suite を宣言していない" % skill)
 
 
+def check_grammar_catalog():
+    """文法カタログが挙げる指摘コードと原型が、実在するか。
+
+    カタログは「そのまま貼る」ための文書なので、存在しないコードや原型を
+    書いていると、貼った利用者のところで初めて壊れる。
+    """
+    NON_ARCHETYPES = {"grammar", "escalate", "arc", "role", "id", "allow",
+                      "pptx-create", "pptx-design", "pptx-edit", "pptx-review"}
+    catalog = ROOT / "pptx-design" / "references" / "grammar-catalog.md"
+    if not catalog.exists():
+        return
+    text = catalog.read_text()
+    rubric = (REVIEW / "references" / "review-rubric.md").read_text()
+    for code in sorted(set(re.findall(r'"([A-Z_]{4,})"', text))):
+        if code not in rubric:
+            note("文法カタログが監査基準に無いコード %s を使っている" % code)
+    kinds = set(re.findall(r'if kind == "([\w-]+)"', SKELETON))
+    for name in sorted(set(re.findall(r"`([a-z][a-z-]+)`", text))):
+        if name in ("answer-led", "situation-complication", "pain-led", "question-evidence",
+                    "chronicle", "before-after", "fact-meaning-action"):
+            continue                                  # 文法の id。原型ではない
+        if name in NON_ARCHETYPES or "-" not in name and name.islower() and len(name) < 4:
+            continue
+        if name not in kinds and name not in NON_ARCHETYPES:
+            note("文法カタログが骨格に無い原型 %s を挙げている" % name)
+
+
 def check_kinsoku():
     """禁則の文字クラスが、骨格と lint で一致しているか。
 
@@ -289,6 +316,7 @@ def main():
     check_chart_kinds()
     check_components()
     check_bundle()
+    check_grammar_catalog()
     check_kinsoku()
     check_cross_references()
     check_lock_roundtrip(sample)

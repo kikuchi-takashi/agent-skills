@@ -88,7 +88,7 @@ for name in ("pptx", "lxml"):
 - **型スケール**は `references/design-lock-guide.md` の雛形。講演型と資料型で値が違う。`pptx-create` の骨格の `SCALE` と一致させる。
 - **グリッド**（キャンバス、余白、列、要素間の最小間隔）も同じく骨格の定数と一致させる。
 - **シグネチャは主題から作る。** 4条件（主題由来／1つの形に1つの意味／初出で凡例／静かな標識・幾何そのものの1枚・凡例の3層）を `design-lock.md` に書き切る。書けないなら、まだ署名が無い。うるさい登場は3回まで。
-  引き出しとして `scripts/suggest_motif.py` に主題を渡すと候補が出る（`python3 <skills>/pptx-design/scripts/suggest_motif.py "主題の文"`）。**候補は出発点であって既定値ではない。** 一致が弱ければ何も出さないので、そのときは主題から自分で作る。採用するには「この主題でこの形が意味を持つ理由」を1行書く。
+  引き出しとして `scripts/suggest_motif.py` に主題を渡すと候補が出る（11の語彙。帳簿・計器・図面・被覆・経路・地層・配電・潮位・継ぎ手・検体・門扉）（`python3 <skills>/pptx-design/scripts/suggest_motif.py "主題の文"`）。**候補は出発点であって既定値ではない。** 一致が弱ければ何も出さないので、そのときは主題から自分で作る。採用するには「この主題でこの形が意味を持つ理由」を1行書く。
 - **レイアウト名簿**: このデッキで使う原型を挙げる。原型の一覧と意味は `pptx-create` の `references/layout-catalog.md`。
 
 書き終えたら `references/anti-ai-checklist.md` の**視覚の兆候**で点検する。ロックの段階で兆候を持っているなら、生成しても消えない。
@@ -127,8 +127,9 @@ subprocess.run([sys.executable, "<skills>/pptx-review/scripts/extract_style.py",
 - **検査できない禁じ手をここに書かない。** 「各展示物に含意を1行付ける」は文意の判断で機械にできない。
   それは `pptx-review` の `visual-qa-prompt.md` の観点に置く。書いただけで守られたことにしない
 
-まず `answer-led`（結論先出し）と `evidence-led`（問い→方法→結果→限界）の2つで足りる。
-足りなくなってから増やす。
+**目的から選ぶ。** 7つの文法（判断を仰ぐ／説得する／痛みから動かす／示して納得させる／経緯を伝える／変化を見せる／教えて動かす）が `references/grammar-catalog.md` にあり、そのまま貼れる JSON と、原型の並び・やらないこと・`escalate` の理由が付いている。**迷ったら `answer-led`**——相手の時間を最も使わない。
+
+分野が違うだけでは足さない。医療でも官公庁でも、判断を仰ぐなら `answer-led` である。
 
 `deck/design-lock.json` に最低限これを書く。
 
