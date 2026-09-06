@@ -534,6 +534,35 @@ def _(g, p):
     g["text"](s, 0.8, 4.6, 8.0, 1.0, ["写真の上に置いた一文。"], g["SIZE"]["h2"], color="bg")
 
 
+@case("タイトルを後から置くと咎める", expect=["READING_ORDER_TITLE_LATE"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["text"](s, g["M"], g["BODY_Y"], 7.0, 1.4, ["本文の一行目です。"], g["SIZE"]["body"])
+    g["text"](s, g["M"], g["BODY_Y"] + 1.6, 7.0, 1.4, ["本文の二行目です。"], g["SIZE"]["body"])
+    g["page_title"](s, "本文の後にタイトルを置いたページの主張")   # 重ね順が最後＝読み上げも最後
+
+
+@case("出典を先に置くと咎める", expect=["READING_ORDER_FOOTER_EARLY"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "出典を先に置いたページの主張")
+    g["page_source"](s, "出典: 資料")                              # 本文より先
+    g["text"](s, g["M"], g["BODY_Y"], 7.0, 1.4, ["本文の一行目です。"], g["SIZE"]["body"])
+
+
+@case("骨格どおりの順序は咎めない",
+      forbid=["READING_ORDER_TITLE_LATE", "READING_ORDER_FOOTER_EARLY"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "骨格の順序どおりに置いたページの主張")
+    g["text"](s, g["M"], g["BODY_Y"], 7.0, 1.4, ["本文の一行目です。"], g["SIZE"]["body"])
+    g["text"](s, g["M"], g["BODY_Y"] + 1.6, 7.0, 1.4, ["本文の二行目です。"], g["SIZE"]["body"])
+    g["page_source"](s, "出典: 資料")
+
+
 @case("順序の無い棒が値順でないと咎める", expect=["CHART_BARS_UNSORTED"])
 def _(g, p):
     base(g, p)

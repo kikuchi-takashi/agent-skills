@@ -1165,6 +1165,19 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes, theme=N
             if unresolved_text_color:
                 deck_state["contrast_unmeasured"] += 1
 
+    # 読み上げ順序: spTree の文書順がそのまま読み上げ順になる。
+    # 見た目の順序と食い違うと、聞いている人だけ話が前後する。
+    ordered = [t for t in text_shapes if t["box"] is not None]
+    if len(ordered) >= 3:
+        if title_shape is not None and title_shape in ordered and ordered[0] is not title_shape:
+            add("READING_ORDER_TITLE_LATE", "info",
+                "タイトルが %d 番目に読み上げられる。図形の重ね順がそのまま読み上げ順になるので、"
+                "タイトルを最初に置く" % (ordered.index(title_shape) + 1), title_shape)
+        foot = [t for t in ordered if t["box"][1] >= ch * 0.85]
+        if foot and ordered[-1] not in foot:
+            add("READING_ORDER_FOOTER_EARLY", "info",
+                "フッター（出典・ページ番号）が本文より先に読み上げられる。最後に置く", foot[0])
+
     # 代替テキスト: 読み上げと、画像が表示できない環境で内容が伝わるかどうか
     for s_ in shapes:
         if s_["kind"] not in ("picture", "chart", "table") or s_["box"] is None:
