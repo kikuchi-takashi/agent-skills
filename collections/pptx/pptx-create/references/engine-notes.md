@@ -10,7 +10,7 @@
 | Pillow | 簡易描画（pptx-review の `render_preview.py`） | 描画確認ができない。lint（標準ライブラリのみ）だけ通し、確認範囲を報告する |
 | 和文の書体ファイル（.ttf/.otf） | 簡易描画で字形を出す | 無くても描画は動き、和文は文字幅どおりの灰色バーで代替される。レイアウトの確認には足りる |
 
-**素材の読み込みと加工**は、環境にあるライブラリを使ってよい。元資料の PDF・Word・Excel からの抽出、写真の切り抜きや調整、SVG から PNG への変換などが該当する。使う前に `importlib` で存在と版を確かめる。**ただし出力はネイティブに保つ**——図表は `add_chart`、表は `add_table` で作り、文字を画像に焼かない。
+**素材の加工は作業ごとに道具が決まっている。** 「環境にあるライブラリを使ってよい」ではない——実行のたびに違う道具が選ばれると結果が揃わない。写真の正規化と参考画像からの色は Pillow、`.docx`/`.xlsx`/`.pptx` からの文字は標準ライブラリ（`zipfile` + `xml.etree`）、SVG は置かずに図形へ組み直す。道具ごとの最小のコードと、無いときの縮退は `references/materials.md` にある。**出力はネイティブに保つ**——図表は `add_chart`、表は `add_table` で作り、文字を画像に焼かない。
 
 - シェルが使えない環境がある。手順はすべて Python のコードで書き、ZIP の展開や結合も `zipfile` で行う。
 - 1回の実行に時間の上限がある環境がある。生成と描画を数枚ずつに分け、途中結果をファイルに残す。
@@ -24,6 +24,7 @@
 ロックの JSON を読み、定数だけで座標と色を決める。ページ関数は1レイアウト1関数にし、`outline.md` の順に呼ぶ。
 
 ```python
+import io
 import json
 import math
 import re
@@ -497,14 +498,33 @@ def bar_chart(slide, x, y, w, h, categories, series, fmt="0.0"):
     return chart(slide, x, y, w, h, categories, series, kind="bar", fmt=fmt)
 
 
-def picture(slide, path, x, y, w, h, fit="cover"):
+def picture(slide, path, x, y, w, h, fit="cover", normalize=True):
     """枠に合わせて画像を置く。fit="cover" は枠を埋めて余りを切り落とし、
-    "contain" は全体を見せて枠内に収める。縦横比は保つ。"""
-    from PIL import Image
+    "contain" は全体を見せて枠内に収める。縦横比は保つ。
+
+    **置く前に正規化する。** python-pptx は素材のバイト列をそのまま埋めるので、
+    EXIF の回転（スマホ写真が横倒しになる）も CMYK・16bit（色が変わる）も
+    そのまま受け手に渡る。詳細と縮退は references/materials.md。
+    """
+    from PIL import Image, ImageOps
+    source = path                            # add_picture はパスでもファイル様でも受ける
     with Image.open(path) as img:
-        iw, ih = img.size
+        if normalize:
+            fixed = ImageOps.exif_transpose(img)          # 回転を画素に焼く
+            if fixed.mode not in ("RGB", "L"):
+                fixed = fixed.convert("RGB")              # CMYK・16bit・パレットを揃える
+            fixed.thumbnail((2400, 2400))                 # 過剰な画素を落とす
+            buf = io.BytesIO()                            # 素材の隣にファイルを作らない
+            if img.format == "JPEG" and fixed.mode == "RGB":
+                fixed.save(buf, "JPEG", quality=88, dpi=(96, 96))
+            else:
+                fixed.save(buf, "PNG", dpi=(96, 96))
+            buf.seek(0)
+            source, (iw, ih) = buf, fixed.size
+        else:
+            iw, ih = img.size
     box_ratio, img_ratio = w / h, iw / float(ih)
-    pic = slide.shapes.add_picture(path, Inches(x), Inches(y), Inches(w), Inches(h))
+    pic = slide.shapes.add_picture(source, Inches(x), Inches(y), Inches(w), Inches(h))
     if fit == "cover":                      # 枠を埋め、はみ出す側を切る
         if img_ratio > box_ratio:
             cut = (1 - box_ratio / img_ratio) / 2
@@ -1135,6 +1155,8 @@ if __name__ == "__main__":
 - **表の行の高さは中身から決める。** 固定にすると、折り返したセルのある行だけが枠から出る。骨格の `table()` は列幅ごとに測って `tbl.rows[i].height` を入れ、`slide_table()` は枠を超えたら例外を出す。
 - **表のセルにも内側余白がある。** `cell.margin_left` などで統一する。表の既定スタイルは色が強いので、`tbl.first_row = False` にして自分で塗る。
 - **画像は縦横比を保つ。** 幅か高さの一方だけ指定する。トリミングは `picture.crop_left` などで行う。
+- **`add_picture` を寸法なしで呼ばない。** 寸法を渡さないと、置かれる実寸が素材の DPI メタデータで決まる。実測では同じ 600×400px が 72dpi で 8.33in、96dpi で 6.25in、300dpi で 2.00in になった。同じ素材がページからはみ出したり豆粒になったりする。骨格の `picture()` は必ず幅と高さを渡す。
+- **EXIF の回転を python-pptx は見ない。** Orientation の付いた写真は横倒しのまま入る（実測: Orientation=6 の画像が回転されずに置かれた）。`ImageOps.exif_transpose()` で画素そのものを回してから置く。CMYK・16bit・パレットの画像もエラーにならずそのまま埋まるので、`convert("RGB")` で揃える。`picture()` がどちらも行う。
 - **SVG と EMF は読めない。** PNG か JPEG に変換してから置く。
 - **グループ図形の中の座標は親基準。** 位置検査が要る要素はグループ化しない。
 - **色は 6 桁の HEX。** `RGBColor.from_string("1A1A1A")`。`#` は付けない。

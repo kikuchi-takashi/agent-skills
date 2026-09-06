@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 LINT = ROOT / "pptx-review" / "scripts" / "pptx_lint.py"
@@ -649,6 +650,44 @@ def main():
     else:
         failures += 1
         print("NG  収まらない文言は黙って溢れさせずに止める（止まった: %d/3）" % stopped)
+
+    # 素材の正規化: 置く前に回転・色空間・画素数を揃える。python-pptx は素材の
+    # バイト列をそのまま埋めるので、ここを飛ばすと横倒しの写真や CMYK が受け手に渡る。
+    try:
+        from PIL import Image, ImageOps  # noqa: F401
+        import io as _io
+        scope = env(workdir)
+        mat = pathlib.Path(workdir) / "mat"
+        mat.mkdir(exist_ok=True)
+        rotated, cmyk = str(mat / "rot.jpg"), str(mat / "cmyk.jpg")
+        big = Image.new("RGB", (4000, 3000), (200, 80, 40))
+        exif = big.getexif()
+        exif[274] = 6                                  # Orientation = 90度回転
+        big.save(rotated, exif=exif, dpi=(300, 300))
+        Image.new("CMYK", (800, 600), (0, 120, 200, 10)).save(cmyk)
+        before = set(os.listdir(str(mat)))
+        pic_prs = scope["new_deck"]()
+        pic_slide = scope["blank"](pic_prs)
+        scope["picture"](pic_slide, rotated, 0.6, 0.6, 3.0, 4.0)
+        scope["picture"](pic_slide, cmyk, 5.0, 0.6, 4.0, 3.0)
+        out_pptx = str(mat / "pics.pptx")
+        pic_prs.save(out_pptx)
+        embedded = []
+        with zipfile.ZipFile(out_pptx) as z:
+            for name in sorted(n for n in z.namelist() if n.startswith("ppt/media")):
+                with Image.open(_io.BytesIO(z.read(name))) as im:
+                    embedded.append((im.size, im.mode))
+        leftovers = set(os.listdir(str(mat))) - before - {"pics.pptx"}
+        normalized = (embedded == [((1800, 2400), "RGB"), ((800, 600), "RGB")]
+                      and not leftovers)
+    except Exception:
+        normalized = False
+    if normalized:
+        ok += 1
+        print("ok  写真は回転・色空間・画素数を揃えてから埋め込む")
+    else:
+        failures += 1
+        print("NG  写真は回転・色空間・画素数を揃えてから埋め込む")
 
     # フッター行の3つの持ち場は重ならない（出典・章名/付録の印・ページ番号）。
     foot = scope["FOOT"]
