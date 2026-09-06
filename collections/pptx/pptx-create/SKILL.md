@@ -4,7 +4,7 @@ description: "要件・原稿・資料から、編集可能なPowerPoint（.pptx
 license: MIT
 compatibility: "Python 3.9+ と python-pptx（lxml、Pillow、XlsxWriter）。着手時に利用できるライブラリを確認して経路を決める。描画確認は pptx-review 同梱の簡易描画、ハーネスが PowerPoint 互換の描画を提供する場合はそれを最終確認に使う。"
 metadata:
-  version: "2.1.0"
+  version: "2.2.0"
   publisher: "agent-skills"
   bundle: pptx-suite
 ---
@@ -128,6 +128,8 @@ subprocess.run([sys.executable, "<skills>/pptx-create/scripts/check_implementati
 **pptx-review スキルが導入済みなら、別コンテキスト（サブエージェント）で監査させる。** 無ければ `references/qa.md` のチェックリストと描画画像で自分で行うが、生成直後の自分の目は甘いので、全ページを新鮮な目で見直す。
 
 修正したら変更したページだけ再描画し、新しい指摘が出なくなるまで回す。3周して収束しなければ、残った問題を利用者に報告して判断を仰ぐ。
+
+bundleを保守するとき、生成骨格が機械的欠陥を防げているかは `scripts/measure-skeleton.py` で比較する。監査精度と文書整合の検査は兄弟スキル `pptx-review/scripts/eval-checks.py` と `pptx-review/scripts/audit-consistency.py` にある。
 
 ### 6. 納品
 

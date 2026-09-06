@@ -4,14 +4,14 @@ description: "PowerPoint（.pptx）を変更せずに監査し、はみ出し・
 license: MIT
 compatibility: "Python 3.9+。lint と設計値抽出は標準ライブラリのみ、簡易描画は Pillow。和文の書体ファイルがあれば字形まで描く。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に併用する。"
 metadata:
-  version: "1.6.0"
+  version: "1.7.0"
   publisher: "agent-skills"
   bundle: pptx-suite
 ---
 
 # pptx-review — 変更せずに監査し、証拠つきで報告する
 
-`pptx-design`、`pptx-create`、`pptx-edit`、`pptx-review` は `pptx-suite` として一体配布する。このスキルが同梱するスクリプトは、4スキル共通の抽出・lint・描画基盤である。監査の基準になる `design-lock.json` は `pptx-design` の成果物である。4スキルの一部だけを配布・導入しない。
+`pptx-design`、`pptx-create`、`pptx-edit`、`pptx-review` は `pptx-suite` として一体配布する。このスキルの `scripts/` は、4スキル共通の抽出・lint・描画基盤と、その回帰検査を持つ。監査の基準になる `design-lock.json` は `pptx-design` の成果物である。4スキルの一部だけを配布・導入しない。
 
 ## 役割
 
@@ -174,3 +174,11 @@ subprocess.run([sys.executable, "scripts/qa_evidence.py", "check",
 ## 出力
 
 監査報告（Markdown）、`qa/lint.json`、全ページの個別描画画像、一覧画像。作成・編集ワークフローでは `qa/qa-evidence.json` と設計〜実装対応表も返す。
+
+## bundle保守
+
+- `scripts/eval-checks.py`: lint・編集前後比較・実装仕様・QA証跡の回帰検査
+- `scripts/audit-consistency.py`: 兄弟スキルを含む文書・骨格・スクリプトの整合監査
+- `scripts/visual-baseline.py`: `scripts/baseline/shapes.png` を使う描画像の回帰検査
+
+生成骨格そのものの比較測定は、兄弟スキル `pptx-create/scripts/measure-skeleton.py` に置く。

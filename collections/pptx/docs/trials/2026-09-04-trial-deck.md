@@ -169,4 +169,4 @@ pptx-create の `engine-notes.md` の骨格コードをそのまま使い、8枚
 
 ### 常設化
 
-`collections/pptx/scripts/` に2本を置き、root の `AGENTS.md` に scoped validator として登録した。コレクションを変更したら両方を走らせる。
+当初コレクション直下に置いた2本は、現在は `pptx-review/scripts/` に移し、root の `AGENTS.md` に scoped validator として登録している。コレクションを変更したら両方を走らせる。

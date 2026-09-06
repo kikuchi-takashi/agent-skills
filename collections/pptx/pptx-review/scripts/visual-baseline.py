@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""描画の見た目の回帰検査。リポジトリ保守用（配布物ではない）。
+"""描画の見た目の回帰検査。pptx-suite の保守用。
 
 lint は幾何の数値を見る。ここは**描かれた画素**を見る。描画側の退行——
 消したはずの枠が描かれる、面が塗られない、線が太る——は数値に出ないため、
 画素を基準画像と突き合わせる以外に捕まえる手が無い。
 
-    python3 collections/pptx/scripts/visual-baseline.py            # 照合
-    python3 collections/pptx/scripts/visual-baseline.py --update   # 基準を更新
+    python3 collections/pptx/pptx-review/scripts/visual-baseline.py            # 照合
+    python3 collections/pptx/pptx-review/scripts/visual-baseline.py --update   # 基準を更新
 
 **文字を置かない。** 文字のある画は実行環境にある書体で変わるので、機械を
 またいで再現しない（実測: 同じデッキでも和文書体の有無で全ページの画素が
@@ -23,10 +23,10 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 RENDER = ROOT / "pptx-review" / "scripts" / "render_preview.py"
 ENGINE = ROOT / "pptx-create" / "references" / "engine-notes.md"
-BASELINE = ROOT / "scripts" / "baseline" / "shapes.png"
+BASELINE = pathlib.Path(__file__).resolve().parent / "baseline" / "shapes.png"
 LOCK = {
     "fonts": ["Yu Gothic"],
     "palette_basis": "基準画像用。色は固定でよい（見た目の退行だけを見る）",

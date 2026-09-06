@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""骨格が何を防いでいるかを測る。リポジトリ保守用（配布物ではない）。
+"""骨格が何を防いでいるかを測る。pptx-suite の保守用。
 
 これまでの根拠は「lint が通る」だけで、**骨格を使わない場合と比べていない**。
 同じ内容を「骨格で組んだ版」と「素の python-pptx で組んだ版」で作り、
 lint の指摘数と描画のはみ出し数を比べる。
 
-    python3 collections/pptx/scripts/measure-skeleton.py
+    python3 collections/pptx/pptx-create/scripts/measure-skeleton.py
 
 人手の採点は入れない。ここで言えるのは「骨格が機械的に検出できる欠陥を
 どれだけ減らすか」だけであり、**デッキが良いかどうかは測っていない**。
@@ -19,7 +19,7 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 LINT = ROOT / "pptx-review" / "scripts" / "pptx_lint.py"
 RENDER = ROOT / "pptx-review" / "scripts" / "render_preview.py"
 ENGINE = ROOT / "pptx-create" / "references" / "engine-notes.md"

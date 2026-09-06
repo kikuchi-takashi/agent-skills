@@ -189,8 +189,8 @@ subprocess.run([sys.executable, "<skills>/pptx-review/scripts/qa_evidence.py", "
 このコレクション自体を変更したときは、次を走らせる（配布物ではない）。
 
 ```bash
-python3 collections/pptx/scripts/eval-checks.py           # 検査の精度（出るべき/出てはいけない）
-python3 collections/pptx/scripts/audit-consistency.py     # 文書と実装の整合
+python3 collections/pptx/pptx-review/scripts/eval-checks.py       # 検査の精度（出るべき/出てはいけない）
+python3 collections/pptx/pptx-review/scripts/audit-consistency.py # 文書と実装の整合
 ```
 
 ## 修正のループ

@@ -116,20 +116,20 @@ Python 3.9、python-pptx 0.6.21、Pillow 8.3.2を互換基準とし、骨格の2
 
 `instruction.md` は、このコレクションを特定の用途（営業資料）向けに束ねる例です。配布スキルではありません。用途に固有のもの（要件の聞き方、ストーリーラインの型、その分野の禁止事項、デザインロックの出発点）だけを書き、設計原則・レイアウト原型・生成の骨格・検査・納品報告はスキル側に委ねる構成にしています。自分の用途に写して直す出発点として使えます。
 
-## コレクションの保守
+## bundleの保守
 
-`collections/pptx/scripts/` はコレクション全体の保守用検査です。各スキルの配布パッケージには含まれません。
+保守用スクリプトも責任を持つスキルの `scripts/` に置き、bundleをインストールした環境で参照できるようにします。
 
-- `eval-checks.py`: 101件のケースでlint・編集前後比較・実装仕様・QA証跡の検出/非検出と運用上の回帰を確認する
-- `measure-skeleton.py`: 同じ内容を骨格で組んだ版と素の python-pptx で組んだ版で作り、指摘数・はみ出し数・検査できない箱の数を比べる
-- `visual-baseline.py`: 図形だけの見本を描画し、画素を基準画像と突き合わせる。描画側の退行（消したはずの枠が出る、面が塗られない）は数値に出ないため画素で見る。文字は書体で変わるので置かない
-- `audit-consistency.py`: 文書、骨格コード、監査ツールの数値・名称・オプションを照合する
+- `pptx-review/scripts/eval-checks.py`: 101件のケースでlint・編集前後比較・実装仕様・QA証跡の検出/非検出と運用上の回帰を確認する
+- `pptx-create/scripts/measure-skeleton.py`: 同じ内容を骨格で組んだ版と素の python-pptx で組んだ版で作り、指摘数・はみ出し数・検査できない箱の数を比べる
+- `pptx-review/scripts/visual-baseline.py`: 図形だけの見本を描画し、同じディレクトリの `baseline/shapes.png` と画素を突き合わせる。描画側の退行は数値に出ないため画素で見る
+- `pptx-review/scripts/audit-consistency.py`: 文書、骨格コード、監査ツールの数値・名称・オプションを照合する
 
 変更後はリポジトリルートで実行します。
 
 ```bash
-python3 collections/pptx/scripts/eval-checks.py
-python3 collections/pptx/scripts/audit-consistency.py
+python3 collections/pptx/pptx-review/scripts/eval-checks.py
+python3 collections/pptx/pptx-review/scripts/audit-consistency.py
 python3 -m agent_skills_marketplace validate --root collections
 python3 -m agent_skills_marketplace index --root collections --output marketplace.json
 python3 -m agent_skills_marketplace index --root collections --output marketplace.json --check

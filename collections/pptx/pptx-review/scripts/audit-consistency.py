@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""pptx コレクションの文書・実装整合監査。リポジトリ保守用（配布物ではない）。
+"""pptx-suite の文書・実装整合監査。
 
 文書に書いた数値や名前が、骨格コードやスクリプトの実装と食い違っていないかを機械的に確かめる。
 食い違いは利用者に見えない形で品質を落とすため、変更のたびに走らせる。
 
-    python3 collections/pptx/scripts/audit-consistency.py
+    python3 collections/pptx/pptx-review/scripts/audit-consistency.py
 """
 
 import json
@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 CREATE = ROOT / "pptx-create" / "references"
 DESIGN = ROOT / "pptx-design" / "references"
 REVIEW = ROOT / "pptx-review"

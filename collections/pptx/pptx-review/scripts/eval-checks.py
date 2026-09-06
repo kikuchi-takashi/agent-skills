@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""pptx コレクションの検査精度テスト。リポジトリ保守用（配布物ではない）。
+"""pptx-suite の検査精度テスト。
 
 pptx-create の骨格でデッキを組み、pptx-review の lint が
 「出るべき指摘を出し、出てはいけない指摘を出さない」ことを確かめる。
 
-    python3 collections/pptx/scripts/eval-checks.py
+    python3 collections/pptx/pptx-review/scripts/eval-checks.py
 
 python-pptx が必要。lint 自体は標準ライブラリだけで動く。
 """
@@ -19,7 +19,7 @@ import sys
 import tempfile
 import zipfile
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 LINT = ROOT / "pptx-review" / "scripts" / "pptx_lint.py"
 LAYOUT_GUARD = ROOT / "pptx-review" / "scripts" / "layout_guard.py"
 PALETTE_SCRIPT = ROOT / "pptx-design" / "scripts" / "generate_palette.py"
