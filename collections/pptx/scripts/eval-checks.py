@@ -689,6 +689,55 @@ def main():
         failures += 1
         print("NG  写真は回転・色空間・画素数を揃えてから埋め込む")
 
+    # 線を明示的に消した図形に、描画が枠を足さない。足すと、コードから枠を消しても
+    # 描画画像に残り、消えない枠を追いかけることになる。
+    try:
+        from PIL import Image
+        from pptx.enum.shapes import MSO_SHAPE
+        from pptx.dml.color import RGBColor
+        from pptx.util import Inches, Pt
+        scope = env(workdir)
+        bd_prs = scope["new_deck"]()
+        bd = scope["blank"](bd_prs)
+        scope["rect"](bd, 0, 0, scope["W"], scope["H"], "bg")
+        geoms = (MSO_SHAPE.RECTANGLE, MSO_SHAPE.ROUNDED_RECTANGLE, MSO_SHAPE.RIGHT_ARROW,
+                 MSO_SHAPE.CHEVRON, MSO_SHAPE.OVAL, MSO_SHAPE.SNIP_1_RECTANGLE)
+        for i, kind in enumerate(geoms):                 # 塗りあり・線は明示的に消す
+            sh = bd.shapes.add_shape(kind, Inches(0.6 + i * 2.1), Inches(2.0),
+                                     Inches(1.8), Inches(1.2))
+            sh.fill.solid()
+            sh.fill.fore_color.rgb = RGBColor.from_string(TEST_PALETTE["panel"])
+            sh.line.fill.background()
+            sh.shadow.inherit = False
+        lined = bd.shapes.add_shape(MSO_SHAPE.CHEVRON, Inches(0.6), Inches(4.0),
+                                    Inches(1.8), Inches(1.2))
+        lined.fill.solid()
+        lined.fill.fore_color.rgb = RGBColor.from_string(TEST_PALETTE["panel"])
+        lined.line.color.rgb = RGBColor.from_string(TEST_PALETTE["accent"])
+        lined.line.width = Pt(2)
+        lined.shadow.inherit = False
+        bd_path = os.path.join(workdir, "borders.pptx")
+        bd_prs.save(bd_path)
+        render = ROOT / "pptx-review" / "scripts" / "render_preview.py"
+        subprocess.run([sys.executable, str(render), bd_path,
+                        "--out", os.path.join(workdir, "bd")], capture_output=True, check=True)
+        img = Image.open(os.path.join(workdir, "bd-01.png")).convert("RGB")
+        sx, sy = img.width / scope["W"], img.height / scope["H"]
+        panel = tuple(int(TEST_PALETTE["panel"][i:i + 2], 16) for i in (0, 2, 4))
+        accent = tuple(int(TEST_PALETTE["accent"][i:i + 2], 16) for i in (0, 2, 4))
+        edges = [img.getpixel((int(round((0.6 + i * 2.1 + 0.9) * sx)), int(round(2.0 * sy))))
+                 for i in range(len(geoms))]
+        kept = img.getpixel((int(round(1.5 * sx)), int(round(4.0 * sy))))
+        borders_ok = all(e == panel for e in edges) and kept == accent
+    except Exception:
+        borders_ok = False
+    if borders_ok:
+        ok += 1
+        print("ok  線を消した図形に描画が枠を足さない（ある線は描く）")
+    else:
+        failures += 1
+        print("NG  線を消した図形に描画が枠を足さない（ある線は描く）")
+
     # フッター行の3つの持ち場は重ならない（出典・章名/付録の印・ページ番号）。
     foot = scope["FOOT"]
     if (foot["source"][0] + foot["source"][1] <= foot["section"][0] + 1e-6

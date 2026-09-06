@@ -236,11 +236,12 @@ class Renderer(object):
             draw.ellipse(box, fill=fill, outline=line, width=line_w)
         elif geom == "line":
             self.draw_connector(draw, shape)
-        elif geom in ("rect", "flowChartProcess", "snip1Rect", "round1Rect", "round2SameRect") or fill is not None or line is not None:
-            if geom not in ("rect", "flowChartProcess"):
-                draw.rectangle(box, fill=fill, outline=line or (180, 180, 180), width=line_w)
-            else:
-                draw.rectangle(box, fill=fill, outline=line, width=line_w)
+        else:
+            # 知らない形（矢印・シェブロン・角切り四角…）も外接矩形で描く。**枠は
+            # 足さない。** 以前はここで灰色の枠を補っていたが、線を明示的に消した
+            # 図形にも枠が出て、コードから枠を消しても描画に残った。テーマ由来の
+            # 線は fill_and_line() が lnRef から解決済みなので、補う必要はない。
+            draw.rectangle(box, fill=fill, outline=line, width=line_w)
 
     def draw_connector(self, draw, shape):
         el = shape["el"]
