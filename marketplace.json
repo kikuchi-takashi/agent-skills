@@ -15,6 +15,7 @@
       "name": "PPTX",
       "skills": [
         "pptx-create",
+        "pptx-design",
         "pptx-edit",
         "pptx-review"
       ]
@@ -65,12 +66,23 @@
     {
       "id": "pptx-create",
       "name": "pptx-create",
-      "description": "要件・原稿・資料から、編集可能なPowerPoint（.pptx）を新規に設計・生成する。聴衆と目的の整理、主張を一文で書くスライド構成、生成前のデザインロック、python-pptxによる生成、描画画像とlintによる品質確認までを一続きに行う。「PPTを作って」「スライドにまとめて」「プレゼン資料を作成して」「提案書をパワポで」など、新しいデッキを作るときに使う。既存デッキの修正は pptx-edit、監査だけなら pptx-review を使う。",
+      "description": "要件・原稿・資料から、編集可能なPowerPoint（.pptx）を新規に設計・生成する。聴衆と目的の整理、主張を一文で書くスライド構成、python-pptxによる生成、描画画像とlintによる品質確認までを一続きに行う。デザイン方針（配色・書体・型スケール・署名）は pptx-design が決めた design-lock.json を入力に取る。「PPTを作って」「スライドにまとめて」「プレゼン資料を作成して」「提案書をパワポで」など、新しいデッキを作るときに使う。デザイン方針だけなら pptx-design、既存デッキの修正は pptx-edit、監査だけなら pptx-review を使う。",
       "collection": "pptx",
       "path": "pptx/pptx-create",
       "license": "MIT",
       "compatibility": "Python 3.9+ と python-pptx（lxml、Pillow、XlsxWriter）。着手時に利用できるライブラリを確認して経路を決める。描画確認は pptx-review 同梱の簡易描画、ハーネスが PowerPoint 互換の描画を提供する場合はそれを最終確認に使う。",
-      "version": "1.3.0",
+      "version": "2.0.0",
+      "bundle": "pptx-suite"
+    },
+    {
+      "id": "pptx-design",
+      "name": "pptx-design",
+      "description": "PowerPointデッキのデザイン方針を主題から導き、design-lock.json / design-lock.md として確定する。パレット（役割つき7色）、和文書体、型スケール、グリッド、主題由来のシグネチャ、レイアウト名簿を決め、コントラストと色覚距離を検査して固定する。「配色を決めて」「このテーマのデザイン方針を作って」「パレットを作って」「テンプレの設計値を写して」のとき、および pptx-create で生成する前・pptx-edit で編集する前に読む。生成は pptx-create、編集は pptx-edit、監査は pptx-review。",
+      "collection": "pptx",
+      "path": "pptx/pptx-design",
+      "license": "MIT",
+      "compatibility": "Python 3.9+。パレット自動生成は標準ライブラリのみ（比較用PPTXの書き出しに python-pptx）。既存デッキからの設計値抽出は pptx-review 同梱の extract_style.py。外部APIやネットワークは使わない。",
+      "version": "1.0.0",
       "bundle": "pptx-suite"
     },
     {
@@ -81,7 +93,7 @@
       "path": "pptx/pptx-edit",
       "license": "MIT",
       "compatibility": "Python 3.9+ と python-pptx（lxml、Pillow）。構造変更は zipfile と XML 編集。設計値の抽出・検査・描画は pptx-review 同梱のスクリプト。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に使う。",
-      "version": "1.3.0",
+      "version": "1.5.0",
       "bundle": "pptx-suite"
     },
     {
@@ -92,7 +104,7 @@
       "path": "pptx/pptx-review",
       "license": "MIT",
       "compatibility": "Python 3.9+。lint と設計値抽出は標準ライブラリのみ、簡易描画は Pillow。和文の書体ファイルがあれば字形まで描く。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に併用する。",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "bundle": "pptx-suite"
     },
     {

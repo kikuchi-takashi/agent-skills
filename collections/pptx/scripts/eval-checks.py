@@ -19,7 +19,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 LINT = ROOT / "pptx-review" / "scripts" / "pptx_lint.py"
-PALETTE_SCRIPT = ROOT / "pptx-create" / "scripts" / "generate_palette.py"
+PALETTE_SCRIPT = ROOT / "pptx-design" / "scripts" / "generate_palette.py"
 ENGINE = ROOT / "pptx-create" / "references" / "engine-notes.md"
 BLOCK = re.search(r"```python\n(.*?)```", ENGINE.read_text(), re.S).group(1).replace(
     'if __name__ == "__main__":\n    build()', "")

@@ -17,7 +17,12 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CREATE = ROOT / "pptx-create" / "references"
+DESIGN = ROOT / "pptx-design" / "references"
 REVIEW = ROOT / "pptx-review"
+SKILLS = ("pptx-design", "pptx-create", "pptx-edit", "pptx-review")
+SKIP_DOCS = {"SKILL.md", "README.md", "instruction.md",      # 参照文書ではない
+             "brief.md", "outline.md", "changes.md",         # deck/ の作業ファイル
+             "findings.md", "experience-log.md", "design-lock.md"}
 SKELETON = re.search(r"```python\n(.*?)```",
                      (CREATE / "engine-notes.md").read_text(), re.S).group(1)
 issues = []
@@ -56,7 +61,7 @@ def in_range(value, text):
 
 
 def check_grid(consts):
-    lock_md = (CREATE / "design-lock.md").read_text()
+    lock_md = (DESIGN / "design-lock-guide.md").read_text()
     patterns = {
         "M": r"余白: 上下左右 ([\d.]+)",
         "TITLE_Y": r"タイトル: y ([\d.]+)",
@@ -67,12 +72,12 @@ def check_grid(consts):
     for key, pat in patterns.items():
         m = re.search(pat, lock_md)
         if m and key in consts and float(consts[key]) != float(m.group(1)):
-            note("グリッド %s: 骨格 %s / design-lock.md %s" % (key, consts[key], m.group(1)))
+            note("グリッド %s: 骨格 %s / design-lock-guide.md %s" % (key, consts[key], m.group(1)))
 
 
 def check_type_scale(scales):
     """骨格の各密度モードのサイズが、文書の型スケールの範囲に収まっているか。"""
-    lock_md = (CREATE / "design-lock.md").read_text()
+    lock_md = (DESIGN / "design-lock-guide.md").read_text()
     rows = {label: {"talk": talk, "doc": doc} for label, talk, doc in re.findall(
         r"\| (表紙タイトル|ページタイトル|小見出し|本文|注記|出典) \| ([\d〜—]+) \| ([\d〜—]+) \|", lock_md)}
     mapping = {"cover": "表紙タイトル", "title": "ページタイトル", "h2": "小見出し",
@@ -85,7 +90,7 @@ def check_type_scale(scales):
             if not re.search(r"\d", doc):        # 「—」の欄は範囲を定めていない
                 continue
             if not in_range(float(sizes[key]), doc):
-                note("型スケール %s（%s）: 骨格 %spt が design-lock.md の %s に収まらない"
+                note("型スケール %s（%s）: 骨格 %spt が design-lock-guide.md の %s に収まらない"
                      % (label, mode, sizes[key], doc))
 
 
@@ -106,7 +111,7 @@ def check_flags():
         "pptx_lint.py": REVIEW / "scripts" / "pptx_lint.py",
         "render_preview.py": REVIEW / "scripts" / "render_preview.py",
         "extract_style.py": REVIEW / "scripts" / "extract_style.py",
-        "generate_palette.py": ROOT / "pptx-create" / "scripts" / "generate_palette.py",
+        "generate_palette.py": ROOT / "pptx-design" / "scripts" / "generate_palette.py",
     }
     every = {"--help"}
     for script, path in script_paths.items():
@@ -115,9 +120,9 @@ def check_flags():
         every |= set(re.findall(r"(--[a-z-]+)", out))
     docs = [CREATE / "qa.md", REVIEW / "SKILL.md", ROOT / "pptx-edit" / "SKILL.md",
             ROOT / "pptx-edit" / "references" / "match-existing-design.md",
-            CREATE / "engine-notes.md", CREATE / "typography-ja.md",
-            CREATE / "palette-automation.md",
-            ROOT / "pptx-create" / "SKILL.md"]
+            CREATE / "engine-notes.md", DESIGN / "typography-ja.md",
+            DESIGN / "palette-automation.md",
+            ROOT / "pptx-create" / "SKILL.md", ROOT / "pptx-design" / "SKILL.md"]
     for doc in docs:
         text = doc.read_text()
         used = set()
@@ -176,11 +181,37 @@ def check_components():
 
 
 def check_bundle():
-    """3スキルが同じ一体配布bundleを宣言しているか。"""
-    for skill in ("pptx-create", "pptx-edit", "pptx-review"):
+    """4スキルが同じ一体配布bundleを宣言しているか。"""
+    for skill in SKILLS:
         text = (ROOT / skill / "SKILL.md").read_text()
         if not re.search(r"^  bundle: pptx-suite$", text, re.M):
             note("%s が metadata.bundle: pptx-suite を宣言していない" % skill)
+
+
+def check_cross_references():
+    """文書が名前で挙げる参照文書が実在するか。
+
+    スキルを分けると参照がスキルを跨ぐ。名前だけの参照はファイルを動かしても
+    壊れたことに気づけないので、ここで実在を確かめる。
+    """
+    known = {}
+    for skill in SKILLS:
+        for path in (ROOT / skill).rglob("*.md"):
+            if path.name != "SKILL.md":
+                known.setdefault(path.name, []).append(skill)
+    for skill in SKILLS:
+        for doc in (ROOT / skill).rglob("*.md"):
+            text = doc.read_text()
+            for name in sorted(set(re.findall(r"`(?:[\w./-]*/)?([\w-]+\.md)`", text))):
+                if name in SKIP_DOCS:
+                    continue
+                if name not in known:
+                    note("%s/%s が実在しない文書 %s を参照している" % (skill, doc.name, name))
+                    continue
+                owners = known[name]
+                if skill not in owners and not any(o in text for o in owners):
+                    note("%s/%s が %s を参照しているが、持ち主（%s）を書いていない"
+                         % (skill, doc.name, name, "・".join(owners)))
 
 
 def check_chart_kinds():
@@ -190,7 +221,7 @@ def check_chart_kinds():
         note("骨格に CHART_KINDS が無い")
         return
     kinds = set(re.findall(r'"(\w+)":', m.group(1)))
-    for doc in (CREATE / "design-principles.md", CREATE / "layout-catalog.md"):
+    for doc in (DESIGN / "design-principles.md", CREATE / "layout-catalog.md"):
         named = set(re.findall(r"`(bar|bar_stacked|bar_h|line|area|pie|doughnut)`", doc.read_text()))
         for kind in sorted(named - kinds):
             note("%s が挙げる図表 %s が骨格に無い" % (doc.name, kind))
@@ -222,6 +253,7 @@ def main():
     check_chart_kinds()
     check_components()
     check_bundle()
+    check_cross_references()
     check_lock_roundtrip(sample)
     print("=== 文書と実装の整合監査 ===")
     for i in issues:

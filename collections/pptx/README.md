@@ -1,23 +1,26 @@
 # PPTX Skill Set
 
-PowerPoint（`.pptx`）の設計、生成、編集、監査を一貫した品質基準で行う Agent Skills bundleです。`pptx-create`、`pptx-edit`、`pptx-review` の3スキルを `pptx-suite` として一体配布し、内容設計、デザインロック、編集可能な成果物、機械検査、描画確認を組み合わせます。
+PowerPoint（`.pptx`）の設計、生成、編集、監査を一貫した品質基準で行う Agent Skills bundleです。`pptx-design`、`pptx-create`、`pptx-edit`、`pptx-review` の4スキルを `pptx-suite` として一体配布し、内容設計、デザインロック、編集可能な成果物、機械検査、描画確認を組み合わせます。
+
+4スキルは `deck/design-lock.json` を受け渡し物として噛み合います。`pptx-design` がこれを書き、`pptx-create` は生成の入力に取り、`pptx-edit` は既存デッキから同じ形を起こし、`pptx-review` は `--lock` で監査の基準にします。
 
 ## スキルを選ぶ
 
 | スキル | 用途 | 主な成果物 |
 |---|---|---|
-| `pptx-create` | 要件、原稿、資料から新しいデッキを設計・生成する | `.pptx`、ブリーフ、構成、デザインロック、QA結果 |
+| `pptx-design` | 配色、書体、型スケール、グリッド、主題由来のシグネチャを決めて固定する | `design-lock.json`、`design-lock.md`、palette候補 |
+| `pptx-create` | 要件、原稿、資料から新しいデッキを生成する | `.pptx`、ブリーフ、構成、QA結果 |
 | `pptx-edit` | 既存デッキの内容やページを、元のデザインシステムに合わせて編集する | 編集済み `.pptx`、変更内容、QA結果 |
 | `pptx-review` | デッキを変更せず、構造、レイアウト、文章、デザインの整合を監査する | 監査報告、lint結果、描画画像 |
 
-新規作成は `pptx-create`、既存ファイルの変更は `pptx-edit`、評価だけなら `pptx-review` を使います。作成・編集後の品質確認では `pptx-review` を別コンテキストで実行すると、生成時の思い込みから独立した判定になります。
+デザイン方針だけなら `pptx-design`、新規作成は `pptx-design` → `pptx-create`、既存ファイルの変更は `pptx-edit`、評価だけなら `pptx-review` を使います。作成・編集後の品質確認では `pptx-review` を別コンテキストで実行すると、生成時の思い込みから独立した判定になります。
 
 ## 共通ワークフロー
 
 1. 聴衆、目的、利用場面、言語、枚数、ブランド制約、素材をブリーフにまとめる。
 2. 各ページの主張、役割、証拠、展示物を構成として定義する。
-3. パレット、書体、型スケール、グリッド、レイアウト原型をデザインロックに記録する。
-4. デザインロックから編集可能な `.pptx` を生成または編集する。
+3. パレット、書体、型スケール、グリッド、レイアウト原型をデザインロックに記録する（`pptx-design`）。
+4. デザインロックから編集可能な `.pptx` を生成または編集する（`pptx-create` / `pptx-edit`）。
 5. lintと描画画像を照合し、指摘箇所を修正する。
 6. 成果物、仮定、要確認事項、検証結果をまとめて納品する。
 
@@ -41,7 +44,7 @@ PowerPoint（`.pptx`）の設計、生成、編集、監査を一貫した品質
 skills install collection:pptx --root collections --target ~/.agents/skills
 ```
 
-3つのスキルはインストール先へフラットにコピーされますが、配布単位は常に `pptx-suite` 全体です。このリポジトリのCLIでは、`pptx-create`、`pptx-edit`、`pptx-review` のどれか1つを指定しても3つすべてを原子的に導入します。外部の `npx skills` を使う場合は、コレクションパスに対して `--skill '*'` を指定し、一部だけを導入しないでください。
+4つのスキルはインストール先へフラットにコピーされますが、配布単位は常に `pptx-suite` 全体です。このリポジトリのCLIでは、`pptx-design`、`pptx-create`、`pptx-edit`、`pptx-review` のどれか1つを指定しても4つすべてを原子的に導入します。外部の `npx skills` を使う場合は、コレクションパスに対して `--skill '*'` を指定し、一部だけを導入しないでください。
 
 ```bash
 npx skills add kikuchi-takashi/agent-skills/collections/pptx \
@@ -75,6 +78,7 @@ for name in modules:
 |---|---|---|
 | PPTXの構造監査と設計値抽出 | Python標準ライブラリ | `pptx_lint.py`、`extract_style.py` |
 | PPTXの生成・編集 | `python-pptx`、`lxml`、`Pillow`、`XlsxWriter` | `pptx-create`、`pptx-edit` |
+| palette自動生成 | 標準ライブラリ（比較用PPTXの書き出しに `python-pptx`） | `pptx-design` |
 | 簡易描画とコンタクトシート | `Pillow` | `render_preview.py` |
 | データ集計、画像加工、素材抽出 | 実行環境に備わる関連ライブラリ | 入力資料とスライド表現に応じて選択 |
 

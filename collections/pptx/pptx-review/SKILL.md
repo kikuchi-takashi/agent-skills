@@ -4,14 +4,14 @@ description: "PowerPoint（.pptx）を変更せずに監査し、はみ出し・
 license: MIT
 compatibility: "Python 3.9+。lint と設計値抽出は標準ライブラリのみ、簡易描画は Pillow。和文の書体ファイルがあれば字形まで描く。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に併用する。"
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
   publisher: "agent-skills"
   bundle: pptx-suite
 ---
 
 # pptx-review — 変更せずに監査し、証拠つきで報告する
 
-`pptx-create`、`pptx-edit`、`pptx-review` は `pptx-suite` として一体配布する。このスキルが同梱するスクリプトは、3スキル共通の抽出・lint・描画基盤である。3スキルの一部だけを配布・導入しない。
+`pptx-design`、`pptx-create`、`pptx-edit`、`pptx-review` は `pptx-suite` として一体配布する。このスキルが同梱するスクリプトは、4スキル共通の抽出・lint・描画基盤である。監査の基準になる `design-lock.json` は `pptx-design` の成果物である。4スキルの一部だけを配布・導入しない。
 
 ## 役割
 

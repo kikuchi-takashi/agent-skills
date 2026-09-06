@@ -4,14 +4,14 @@ description: "既存のPowerPoint（.pptx/.potx）を、元のデザインに揃
 license: MIT
 compatibility: "Python 3.9+ と python-pptx（lxml、Pillow）。構造変更は zipfile と XML 編集。設計値の抽出・検査・描画は pptx-review 同梱のスクリプト。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に使う。"
 metadata:
-  version: "1.4.0"
+  version: "1.5.0"
   publisher: "agent-skills"
   bundle: pptx-suite
 ---
 
 # pptx-edit — 既存デッキを、そのデザインのまま直す
 
-`pptx-create`、`pptx-edit`、`pptx-review` は `pptx-suite` として一体配布する。抽出・lint・描画では、同じインストール先にある `pptx-review/scripts/` を使う。3スキルの一部だけを配布・導入しない。
+`pptx-design`、`pptx-create`、`pptx-edit`、`pptx-review` は `pptx-suite` として一体配布する。抽出・lint・描画では、同じインストール先にある `pptx-review/scripts/` を使う。デザイン方針の考え方（避けるもの・書体・署名）は `pptx-design` が持つ。4スキルの一部だけを配布・導入しない。
 
 ## 原則
 
@@ -66,7 +66,7 @@ pptx-create の工程0と同じ表で経路を決める。`python-pptx` が無�
 - 文言を差し替えるときは、元と同程度の長さにする。長くなるなら箱の大きさを見直すか、文を削る。縮小しない。
 - テンプレ流し込みで枠が余ったら（4人分の枠に3人）、余った枠は画像・文字ごと削除する。文字だけ消して枠を残さない。
 - 箇条書きは1項目1段落。段落をまとめて1つにしない。
-- 和文の run には latin と ea の両方に書体を指定する（pptx-create の `typography-ja.md`）。
+- 和文の run には latin と ea の両方に書体を指定する（pptx-design の `typography-ja.md`）。
 
 ### 5. 品質確認（`deck/qa/`）
 
