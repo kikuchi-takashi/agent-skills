@@ -9,7 +9,7 @@ metadata:
   bundle: pptx-suite
 ---
 
-# pptx-create — 生成AIらしさを消し、設計を安定させて作る
+# pptx-create — 決まったロックのとおりに、崩れないデッキを組む
 
 `pptx-design`、`pptx-create`、`pptx-edit`、`pptx-review` は `pptx-suite` として一体配布する。デザイン方針は `pptx-design` が決め、このスキルは `deck/design-lock.json` を**入力に取る**。品質確認では、同じインストール先にある `pptx-review/scripts/` を使う。4スキルの一部だけを配布・導入しない。
 
@@ -26,7 +26,7 @@ metadata:
 
 ## 工程
 
-作業ファイルは出力先の `deck/` 配下（`brief.md`、`outline.md`、`design-lock.md`、`design-lock.json`、`build.py`、`qa/`）に置く。各工程の産出物が無いまま次に進まない。
+作業ファイルは出力先の `deck/` 配下に置く。このスキルが書くのは `brief.md`、`outline.md`、`build.py`、`qa/`。`design-lock.md` と `design-lock.json` は同じ `deck/` に置かれるが、書くのは `pptx-design` である。各工程の産出物が無いまま次に進まない。
 
 ### 0. 能力の確認（着手時に1回）
 
