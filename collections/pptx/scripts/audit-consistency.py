@@ -22,7 +22,8 @@ REVIEW = ROOT / "pptx-review"
 SKILLS = ("pptx-design", "pptx-create", "pptx-edit", "pptx-review")
 SKIP_DOCS = {"SKILL.md", "README.md", "instruction.md",      # 参照文書ではない
              "brief.md", "outline.md", "changes.md",         # deck/ の作業ファイル
-             "findings.md", "experience-log.md", "design-lock.md"}
+             "findings.md", "experience-log.md", "design-lock.md",
+             "design-implementation-map.md"}
 SKELETON = re.search(r"```python\n(.*?)```",
                      (CREATE / "engine-notes.md").read_text(), re.S).group(1)
 issues = []
@@ -109,8 +110,11 @@ def check_flags():
     外部コマンド（描画に使う実行ファイルなど）のフラグは対象外。"""
     script_paths = {
         "pptx_lint.py": REVIEW / "scripts" / "pptx_lint.py",
+        "layout_guard.py": REVIEW / "scripts" / "layout_guard.py",
         "render_preview.py": REVIEW / "scripts" / "render_preview.py",
         "extract_style.py": REVIEW / "scripts" / "extract_style.py",
+        "qa_evidence.py": REVIEW / "scripts" / "qa_evidence.py",
+        "check_implementation_spec.py": ROOT / "pptx-create" / "scripts" / "check_implementation_spec.py",
         "generate_palette.py": ROOT / "pptx-design" / "scripts" / "generate_palette.py",
     }
     every = {"--help"}
@@ -118,10 +122,13 @@ def check_flags():
         out = subprocess.run([sys.executable, str(path), "--help"],
                              capture_output=True, text=True).stdout
         every |= set(re.findall(r"(--[a-z-]+)", out))
+        # subparser 固有フラグはトップレベルの --help に出ないため、実装も読む。
+        every |= set(re.findall(r'add_argument\("(--[a-z-]+)"', path.read_text()))
     docs = [CREATE / "qa.md", REVIEW / "SKILL.md", ROOT / "pptx-edit" / "SKILL.md",
             ROOT / "pptx-edit" / "references" / "match-existing-design.md",
             CREATE / "engine-notes.md", DESIGN / "typography-ja.md",
             DESIGN / "palette-automation.md",
+            CREATE / "implementation-spec.md",
             ROOT / "pptx-create" / "SKILL.md", ROOT / "pptx-design" / "SKILL.md"]
     for doc in docs:
         text = doc.read_text()

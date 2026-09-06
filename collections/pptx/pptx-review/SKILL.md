@@ -4,7 +4,7 @@ description: "PowerPoint（.pptx）を変更せずに監査し、はみ出し・
 license: MIT
 compatibility: "Python 3.9+。lint と設計値抽出は標準ライブラリのみ、簡易描画は Pillow。和文の書体ファイルがあれば字形まで描く。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に併用する。"
 metadata:
-  version: "1.4.0"
+  version: "1.6.0"
   publisher: "agent-skills"
   bundle: pptx-suite
 ---
@@ -23,8 +23,9 @@ metadata:
 
 - 対象の `.pptx`（必須）
 - 密度モード: 講演型（`talk`）か資料型（`doc`）。不明なら `doc`
-- あれば `design-lock.json`（書体・役割付きpalette・追加許可色・最小サイズ）と `outline.md`（意図した構成）
+- あれば `design-lock.json`（書体・役割付きpalette・追加許可色・最小サイズ）、`outline.md`（意図した構成）、`implementation-spec.json`（ページの実装契約）
 - 監査の観点の指定（例: 「AIっぽさだけ」「はみ出しだけ」）。無ければ全項目
+- 編集監査では、編集前の `.pptx` と、意図したレイアウト変更を理由つきで列挙したallow JSON
 
 ## 手順
 
@@ -57,6 +58,15 @@ if result.returncode >= 2:
 - 検査項目と重大度は `references/review-rubric.md`。
 - 4枚以上のデッキでは、ページ間の統一性（タイトルの位置と大きさ、本文の左端、本文サイズ、色）を多数派と比べ、外れたページに `*_DRIFT` を出す。`--no-consistency` で切れる。
 - lint は発見器であり、判定器ではない。`passed: true` でも視覚の確認は省略しない。逆に warning は文脈で意図的なものがあり得るので、1件ずつ理由を確認する。
+
+編集前のPPTXがある場合は、lintのbaselineとは別にレイアウト比較を行う。baselineは既存指摘を除外する機能で、図形が動いた・書式構造が変わったこと自体は比較しない。
+
+```python
+subprocess.run([sys.executable, "scripts/layout_guard.py", "before.pptx", "after.pptx",
+                "--strict", "--json-out", "qa/layout-guard.json"])
+```
+
+意図した座標変更、図形追加・削除などがある場合だけ、`--allow layout-allow.json` でコード・ページ・図形・理由を登録する。理由のないallowは無効。`EDIT_AUTOFIT_REFLOW`、theme/layout変更、共有された図表部品の変更は、見た目がその場で正常でも別環境や別ページを壊すため解消する。原因とコードの対応、簡易描画で確定できない範囲は `references/layout-stability.md` を読む。
 
 ### 2. 描画
 
@@ -109,12 +119,30 @@ lint と描画がすべて通っても、**署名が無く形式を選んでい�
 
 **この3つで「手組みに見えるから」を理由に減点しない。** 主題から作られた不揃いな図こそが、そのデッキをテンプレートでないものにしている。咎めるのは、意図が読み取れない不揃いだけである。
 
+### 4c. 証跡の作成と検査
+
+`implementation-spec.json` がある作成・編集ワークフローでは、描画後に `scripts/qa_evidence.py init` を実行する。実物から**設計〜実装対応表**と未記入のQA証跡を作り、形式的QA、デザイン的QA、一覧目視、各ページの実装一致・個別目視を別々に記入する。
+
+```python
+subprocess.run([sys.executable, "scripts/qa_evidence.py", "init", "deck.pptx",
+                "--spec", "implementation-spec.json", "--preview-prefix", "qa/preview",
+                "--json-out", "qa/qa-evidence.json",
+                "--map-out", "qa/design-implementation-map.md"], check=True)
+# 根拠を記入した後
+subprocess.run([sys.executable, "scripts/qa_evidence.py", "check",
+                "qa/qa-evidence.json"], check=True)
+```
+
+`check` は個別previewが全ページ分かつ固有であること、一覧previewがあること、各判定に根拠があることを確かめる。PPTXと画像のSHA-256も照合し、証跡作成後に差し替わっていれば再確認を求める。画像の存在を目視の代用にはしない。仕様書がない外部デッキの単独監査では、実装一致と対応表を「対象外」と報告し、形式的QAとデザイン的QAの分離、個別・一覧の目視証跡は維持する。
+
 ### 5. 報告
 
 ```markdown
 # 監査報告: <ファイル名>
 
-- 判定: 合格 / 要修正（重大 N 件、重要 N 件、軽微 N 件）
+- 形式的QA: 合格 / 要修正 / 未確認（根拠: ...）
+- デザイン的QA: 合格 / 要修正 / 未確認（根拠: ...）
+- 総合判定: 合格 / 要修正（重大 N 件、重要 N 件、軽微 N 件）
 - 設計の判定: 署名 あり/無し・既製、形式の選択 あり/繰り返し、主役 あり/不在
 - 実行した検査: lint（errors N / warnings N、qa/lint.json）、簡易描画 N 枚、ハーネス側の描画 あり/なし
 - 使用した書体と、描画で代替が起きたかどうか
@@ -145,4 +173,4 @@ lint と描画がすべて通っても、**署名が無く形式を選んでい�
 
 ## 出力
 
-監査報告（Markdown）、`qa/lint.json`、描画画像の場所。
+監査報告（Markdown）、`qa/lint.json`、全ページの個別描画画像、一覧画像。作成・編集ワークフローでは `qa/qa-evidence.json` と設計〜実装対応表も返す。

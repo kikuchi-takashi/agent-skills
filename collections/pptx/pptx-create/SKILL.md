@@ -4,7 +4,7 @@ description: "要件・原稿・資料から、編集可能なPowerPoint（.pptx
 license: MIT
 compatibility: "Python 3.9+ と python-pptx（lxml、Pillow、XlsxWriter）。着手時に利用できるライブラリを確認して経路を決める。描画確認は pptx-review 同梱の簡易描画、ハーネスが PowerPoint 互換の描画を提供する場合はそれを最終確認に使う。"
 metadata:
-  version: "2.0.0"
+  version: "2.1.0"
   publisher: "agent-skills"
   bundle: pptx-suite
 ---
@@ -26,7 +26,7 @@ metadata:
 
 ## 工程
 
-作業ファイルは出力先の `deck/` 配下に置く。このスキルが書くのは `brief.md`、`outline.md`、`build.py`、`qa/`。`design-lock.md` と `design-lock.json` は同じ `deck/` に置かれるが、書くのは `pptx-design` である。各工程の産出物が無いまま次に進まない。
+作業ファイルは出力先の `deck/` 配下に置く。このスキルが書くのは `brief.md`、`outline.json` / `outline.md`、`implementation-spec.json` / `implementation-spec.md`、`build.py`、`qa/`。`design-lock.md` と `design-lock.json` は同じ `deck/` に置かれるが、書くのは `pptx-design` である。各工程の産出物が無いまま次に進まない。
 
 ### 0. 能力の確認（着手時に1回）
 
@@ -88,7 +88,18 @@ subprocess.run([sys.executable, "<skills>/pptx-create/scripts/check_outline.py",
 
 工程2で選んだ形式が、ロックのレイアウト名簿に無い原型を要求している場合は、生成に進まず `pptx-design` に戻して名簿を更新する。
 
-8枚を超えるデッキでは、表紙と本文1枚だけを先に生成・描画して利用者に見せ、方向を確定してから全ページを作る。方向が定まらないときは、`pptx-design` に案を2つ出させて選んでもらう。
+### 3a. スライド実装仕様書と事前preview
+
+`references/implementation-spec.md` に従い、**全デッキで** `deck/implementation-spec.json` を作る。構成の主張・原型とデザインロックを、実装関数、意味領域、内容対応、overflow方式、設計意図へ落とす。生成後に実物を見て後付けしない。
+
+```python
+import subprocess, sys
+subprocess.run([sys.executable, "<skills>/pptx-create/scripts/check_implementation_spec.py",
+                "deck/implementation-spec.json", "--outline", "deck/outline.json",
+                "--md-out", "deck/implementation-spec.md"], check=True)
+```
+
+検査が通ったら、全ページ生成の前に代表ページを生成し、**個別画像と一覧画像の両方**を見る。3ページ以下は全ページ、4ページ以上は最低3ページ（表紙があれば表紙、最も密な本文、図表・写真ページ）を含め、新しい原型や未検証の図形は追加する。収まりは個別、方向・余白・リズムは一覧で確認する。ページ固有の所見を `pre_preview_review` に記入し、同じ検査へ `--preview-prefix deck/qa/pre-preview` を加えて再実行する。これが通り、指摘を解消するまで全ページ生成へ進まない。方向が定まらないときは `pptx-design` に案を2つ出させて選んでもらう。
 
 ### 4. 生成（`deck/build.py`）
 
@@ -110,7 +121,9 @@ subprocess.run([sys.executable, "<skills>/pptx-create/scripts/check_outline.py",
 
 ### 5. 品質確認（`deck/qa/`）
 
-`references/qa.md` の4ゲート（内容・ファイル・視覚・設計）を通す。描画の手順はゲート3、**署名と形式選択の確認はゲート4**にある。ゲート1〜3は欠陥を取り除く検査で、欠陥の除去は品質を足さない。ゲート4を飛ばさない。
+`references/qa.md` の形式的QAとデザイン的QAを**独立に**通す。形式的QAは内容・ファイル・lint・実装仕様との一致、デザイン的QAは全ページ個別表示と一覧表示による収まり・署名・形式選択・主役・リズムの判定である。一方の合格で他方を代用しない。
+
+全ページを描画した直後に `qa_evidence.py init` を実行する。これが、生成後の実物から `deck/qa/design-implementation-map.md`（設計〜実装対応表）と未記入の `deck/qa/qa-evidence.json` を作る。形式的QA、デザイン的QA、一覧表示、各ページの実装一致と個別目視をそれぞれ根拠つきで記入し、最後に `check` する。詳細は `references/qa.md`。
 
 **pptx-review スキルが導入済みなら、別コンテキスト（サブエージェント）で監査させる。** 無ければ `references/qa.md` のチェックリストと描画画像で自分で行うが、生成直後の自分の目は甘いので、全ページを新鮮な目で見直す。
 
@@ -119,6 +132,9 @@ subprocess.run([sys.executable, "<skills>/pptx-create/scripts/check_outline.py",
 ### 6. 納品
 
 - `.pptx`（編集可能）
+- **スライド実装仕様書**（`implementation-spec.json` / `.md`）
+- **設計〜実装対応表**（生成後の `qa/design-implementation-map.md`）
+- **形式的QAとデザイン的QAを分けた証跡**（`qa/qa-evidence.json`）
 - 構成の概要（各ページのタイトル一覧）
 - **実行した検査**と、確認したページ数
 - **使用した書体**と、描画で代替が起きたかどうか
@@ -144,4 +160,4 @@ subprocess.run([sys.executable, "<skills>/pptx-create/scripts/check_outline.py",
 
 ## 出力
 
-編集可能な `.pptx` と、構成概要、仮定と未解決事項、品質確認の証拠を返す。
+編集可能な `.pptx`、スライド実装仕様書、設計〜実装対応表、構成概要、仮定と未解決事項、形式的QAとデザイン的QAの証拠を返す。

@@ -14,7 +14,7 @@
 
 | コード | 重大度 | 意味 |
 |---|---|---|
-| BROKEN_RELATIONSHIP / SLIDE_PART_MISSING / CONTENT_TYPE_MISSING / CONTENT_TYPES_MISSING | 重大 | パッケージの整合が壊れている（開けないか修復ダイアログ） |
+| BROKEN_RELATIONSHIP / BROKEN_RELATIONSHIP_REFERENCE / SLIDE_PART_MISSING / CONTENT_TYPE_MISSING / CONTENT_TYPES_MISSING | 重大 | パッケージの整合が壊れている（開けない、画像などが消える、または修復ダイアログ）。`REFERENCE` は図形XMLにある `r:embed` 等へ対応するrelationshipが移植先に無い |
 | PLACEHOLDER_TEXT | 重大 | 仮置き文言（ダミー、TODO、ここに入力、要確認 など）が残っている |
 | OUT_OF_CANVAS | 重大 | 要素がスライドの外に出ている |
 | TEXT_OVERFLOW_LIKELY | 重大 | 文字が箱に収まらない見込み（推定。画像で確定）。行送りが倍率（`spcPct`）指定のデッキは、見る側が書体の行高に掛けるため実測より高くなる。lint は文字サイズの1.2倍を仮定して数えるので、和文書体ではさらに溢れうる |
@@ -69,6 +69,7 @@
 | MISALIGNED | 軽微 | 他の要素が共有する揃え線から 0.03〜0.15in ずれた端 |
 | CORNER_MIX | 軽微 | 角丸と直角の塗り面が同じページに混在 |
 | AUTOFIT_SHRINK | 軽微 | 自動縮小で収める設定。縮小後のサイズは FONT_TOO_SMALL で別途判定 |
+| AUTOFIT_GROW | 重要 | 文字に合わせてテキストボックスが伸びる設定。文言差替で箱が下または右へ広がり、後続要素と重なる。箱を固定して収まりを検査する |
 | SHAPE_TEXT_TOP_ANCHORED | 軽微 | 図形の中の文字が上に貼り付いている。余りがあるなら上下中央に |
 | DEAD_WHITESPACE | 軽微 | 本文領域の 55% 超が空いている。下や右に偏った空白なら見直す |
 

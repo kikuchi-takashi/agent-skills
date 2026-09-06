@@ -55,6 +55,8 @@ Presentation("out.pptx")                          # 再オープン検査
 
 複製元が図表・SmartArt・埋め込みオブジェクトを持つ場合、複製後の両方が同じ部品を参照する。片方の図表を変えると他方も変わる。図表ごと複製するなら `ppt/charts/chartN.xml` とその rels、`[Content_Types].xml` の登録も複製して付け替える。
 
+図形要素だけを `copy.deepcopy` して別スライドへ貼る方法は、テキストボックスと基本図形に限る。画像・図表・SmartArt・埋め込みオブジェクト・リンクは `r:embed` / `r:link` がスライド固有の `.rels` を参照するため、XMLだけの移植では壊れる。編集後は `pptx_lint.py` の `BROKEN_RELATIONSHIP_REFERENCE` が0件であることを確認する。
+
 ## 4. 削除と並べ替え
 
 - 並べ替えは `<p:sldIdLst>` の `<p:sldId>` の順序を変えるだけでよい。

@@ -21,7 +21,11 @@ import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 LINT = ROOT / "pptx-review" / "scripts" / "pptx_lint.py"
+LAYOUT_GUARD = ROOT / "pptx-review" / "scripts" / "layout_guard.py"
 PALETTE_SCRIPT = ROOT / "pptx-design" / "scripts" / "generate_palette.py"
+SPEC_CHECK = ROOT / "pptx-create" / "scripts" / "check_implementation_spec.py"
+QA_EVIDENCE = ROOT / "pptx-review" / "scripts" / "qa_evidence.py"
+RENDER = ROOT / "pptx-review" / "scripts" / "render_preview.py"
 ENGINE = ROOT / "pptx-create" / "references" / "engine-notes.md"
 BLOCK = re.search(r"```python\n(.*?)```", ENGINE.read_text(), re.S).group(1).replace(
     'if __name__ == "__main__":\n    build()', "")
@@ -564,6 +568,17 @@ def _(g, p):
     g["page_title"](s, "図形に直接文字を書いたページの主張")
     shape = g["rect"](s, g["M"], g["BODY_Y"], 3.0, 1.4, "panel")
     shape.text_frame.text = "受付"
+
+
+@case("自動伸長するテキストボックスを咎める", expect=["AUTOFIT_GROW"])
+def _(g, p):
+    from pptx.util import Inches, Pt
+    base(g, p)
+    s = g["blank"](p)
+    box = s.shapes.add_textbox(Inches(1.0), Inches(2.5), Inches(2.0), Inches(0.5))
+    run = box.text_frame.paragraphs[0].add_run()
+    run.text = "差し替えると右へ伸びて次の要素へ重なる長い文言"
+    run.font.size = Pt(18)
 
 
 @case("box_text なら咎めない", forbid=["SHAPE_TEXT_UNSTYLED", "SHAPE_TEXT_TOP_ANCHORED",
@@ -1342,6 +1357,100 @@ def main():
         failures += 1
         print("NG  タイトル変更後のbaseline照合")
 
+    # 編集前後の比較は、lintの多数派比較では見えない局所的な座標・書式変化を拾う。
+    safe_edit = os.path.join(workdir, "layout-safe-edit.pptx")
+    safe_prs = Presentation(sample)
+    safe_shape = next(sh for sh in safe_prs.slides[2].shapes
+                      if sh.has_text_frame and sh.text.strip())
+    safe_shape.text_frame.paragraphs[0].runs[0].text = "短い差替後のタイトル"
+    safe_prs.save(safe_edit)
+    safe_report = os.path.join(workdir, "layout-safe.json")
+    safe_run = subprocess.run([sys.executable, str(LAYOUT_GUARD), sample, safe_edit,
+                               "--strict", "--json-out", safe_report], capture_output=True)
+    if safe_run.returncode == 0 and json.load(open(safe_report, encoding="utf-8"))["passed"]:
+        ok += 1
+        print("ok  run単位の短い文言差替はレイアウトを変えない")
+    else:
+        failures += 1
+        print("NG  run単位の短い文言差替はレイアウトを変えない")
+
+    broken_edit = os.path.join(workdir, "layout-broken-edit.pptx")
+    broken_prs = Presentation(sample)
+    broken_shape = next(sh for sh in broken_prs.slides[2].shapes
+                        if sh.has_text_frame and sh.text.strip())
+    broken_shape.left += 274320  # 0.3in
+    broken_shape.text_frame.text = "書式を潰した差替"
+    broken_prs.save(broken_edit)
+    broken_report = os.path.join(workdir, "layout-broken.json")
+    subprocess.run([sys.executable, str(LAYOUT_GUARD), sample, broken_edit,
+                    "--json-out", broken_report], capture_output=True)
+    broken_codes = {f["code"] for f in json.load(open(broken_report, encoding="utf-8"))["findings"]}
+    if {"SHAPE_GEOMETRY_CHANGED", "TEXT_STYLE_CHANGED"} <= broken_codes:
+        ok += 1
+        print("ok  編集で混入した座標・文字書式の変化を比較検出")
+    else:
+        failures += 1
+        print("NG  編集で混入した座標・文字書式の変化を比較検出")
+
+    grow_before = os.path.join(workdir, "autogrow-before.pptx")
+    grow_after = os.path.join(workdir, "autogrow-after.pptx")
+    grow_prs = Presentation()
+    grow_slide = grow_prs.slides.add_slide(grow_prs.slide_layouts[6])
+    grow_box = grow_slide.shapes.add_textbox(914400, 914400, 1828800, 457200)
+    grow_box.text_frame.paragraphs[0].text = "短文"
+    grow_prs.save(grow_before)
+    grow_prs = Presentation(grow_before)
+    grow_box = grow_prs.slides[0].shapes[0]
+    grow_box.text_frame.paragraphs[0].runs[0].text = "編集後に右へ大きく伸びて隣の図形へ重なる長い文言"
+    grow_prs.save(grow_after)
+    grow_report = os.path.join(workdir, "autogrow-compare.json")
+    grow_run = subprocess.run([sys.executable, str(LAYOUT_GUARD), grow_before, grow_after,
+                               "--json-out", grow_report], capture_output=True)
+    grow_codes = {f["code"] for f in json.load(open(grow_report, encoding="utf-8"))["findings"]}
+    if grow_run.returncode == 1 and "EDIT_AUTOFIT_REFLOW" in grow_codes:
+        ok += 1
+        print("ok  自動伸長箱の文言差替を重大なreflowとして検出")
+    else:
+        failures += 1
+        print("NG  自動伸長箱の文言差替を重大なreflowとして検出")
+
+    invalid_guard_allow = os.path.join(workdir, "layout-allow-without-reason.json")
+    with open(invalid_guard_allow, "w", encoding="utf-8") as fh:
+        json.dump([{"code": "SHAPE_GEOMETRY_CHANGED"}], fh)
+    invalid_guard = subprocess.run([sys.executable, str(LAYOUT_GUARD), sample, broken_edit,
+                                    "--allow", invalid_guard_allow], capture_output=True, text=True)
+    if invalid_guard.returncode == 2 and "non-empty reason" in invalid_guard.stderr:
+        ok += 1
+        print("ok  レイアウト変更の許可は理由なしで無効化できない")
+    else:
+        failures += 1
+        print("NG  レイアウト変更の許可は理由なしで無効化できない")
+
+    # relationship付きの画像要素だけを別スライドへコピーすると、移植先にrIdが無い。
+    import copy
+    import io
+    from PIL import Image
+    rel_prs = Presentation()
+    rel_a = rel_prs.slides.add_slide(rel_prs.slide_layouts[6])
+    rel_b = rel_prs.slides.add_slide(rel_prs.slide_layouts[6])
+    image_buf = io.BytesIO()
+    Image.new("RGB", (40, 30), (20, 100, 140)).save(image_buf, "PNG")
+    image_buf.seek(0)
+    rel_pic = rel_a.shapes.add_picture(image_buf, 914400, 914400, 1828800, 1371600)
+    rel_b.shapes._spTree.append(copy.deepcopy(rel_pic._element))
+    broken_rel_path = os.path.join(workdir, "broken-picture-reference.pptx")
+    rel_prs.save(broken_rel_path)
+    broken_rel_report = os.path.join(workdir, "broken-picture-reference.json")
+    broken_rel_run = subprocess.run([sys.executable, str(LINT), broken_rel_path,
+                                     "--json-out", broken_rel_report], capture_output=True)
+    broken_rel_codes = {f["code"] for f in json.load(open(broken_rel_report, encoding="utf-8"))["deck_findings"]}
+    if broken_rel_run.returncode == 1 and "BROKEN_RELATIONSHIP_REFERENCE" in broken_rel_codes:
+        ok += 1
+        print("ok  relationship付き図形のXMLだけを別ページへ複製した破損を検出")
+    else:
+        failures += 1
+        print("NG  relationship付き図形のXMLだけを別ページへ複製した破損を検出")
+
     # 並べ替え後に同じページ番号・図形名へ出た新規指摘を、既存扱いしない。
     scope = env(workdir)
     reorder_prs = scope["new_deck"]()
@@ -1515,6 +1624,144 @@ def main():
     else:
         failures += 1
         print("NG  palette自動生成は基準色不足と既存出力の上書きを拒否")
+
+    # 生成前の実装仕様と、生成後の全ページ目視証跡を別のゲートで検査する。
+    spec_prs = Presentation(sample)
+    outline_pages = []
+    spec_slides = []
+    for n, slide in enumerate(spec_prs.slides, 1):
+        title = next((shape.text.strip() for shape in slide.shapes
+                      if shape.has_text_frame and shape.text.strip()), "")
+        exhibit = "chart" if n == 2 else "text"
+        priority = "dense" if n in (1, 3) else "data" if n == 2 else "standard"
+        outline_pages.append({"n": n, "title": title, "role": "body", "exhibit": exhibit,
+                              "archetype": "claim-evidence"})
+        spec_slides.append({
+            "n": n, "title": title, "archetype": "claim-evidence",
+            "preview_priority": priority,
+            "implementation": {
+                "function": "slide_claim_evidence",
+                "regions": ["title", "body"],
+                "content_bindings": {"body": "ページ%dの本文" % n},
+                "overflow": "fit_text",
+                "design_intent": "ページ%dは主張を先に読み、本文を根拠として追う" % n,
+            },
+        })
+    outline_path = pathlib.Path(workdir) / "outline.json"
+    spec_path = pathlib.Path(workdir) / "implementation-spec.json"
+    spec_md = pathlib.Path(workdir) / "implementation-spec.md"
+    outline_path.write_text(json.dumps({"pages": outline_pages}, ensure_ascii=False), encoding="utf-8")
+    spec_path.write_text(json.dumps({"slides": spec_slides}, ensure_ascii=False), encoding="utf-8")
+    spec_run = subprocess.run(
+        [sys.executable, str(SPEC_CHECK), str(spec_path), "--outline", str(outline_path),
+         "--md-out", str(spec_md)], capture_output=True, text=True)
+    if spec_run.returncode == 0 and "# スライド実装仕様書" in spec_md.read_text(encoding="utf-8"):
+        ok += 1
+        print("ok  生成前のスライド実装仕様書と代表previewを検査")
+    else:
+        failures += 1
+        print("NG  生成前のスライド実装仕様書と代表previewを検査")
+
+    short_spec = pathlib.Path(workdir) / "short-spec.json"
+    short_outline = pathlib.Path(workdir) / "short-outline.json"
+    short_outline.write_text(json.dumps({"pages": outline_pages[:3]}, ensure_ascii=False), encoding="utf-8")
+    short_data = {"slides": [dict(slide) for slide in spec_slides[:3]]}
+    short_data["slides"][2] = dict(short_data["slides"][2], preview_priority="standard")
+    short_spec.write_text(json.dumps(short_data, ensure_ascii=False), encoding="utf-8")
+    short_run = subprocess.run(
+        [sys.executable, str(SPEC_CHECK), str(short_spec), "--outline", str(short_outline)],
+        capture_output=True, text=True)
+    overwrite_spec = subprocess.run(
+        [sys.executable, str(SPEC_CHECK), str(spec_path), "--outline", str(outline_path),
+         "--md-out", str(spec_md)], capture_output=True, text=True)
+    if (short_run.returncode == 1 and "3ページ以下" in short_run.stderr
+            and overwrite_spec.returncode == 2 and "output exists" in overwrite_spec.stderr):
+        ok += 1
+        print("ok  短いデッキのpreview省略と仕様表示の上書きを拒否")
+    else:
+        failures += 1
+        print("NG  短いデッキのpreview省略と仕様表示の上書きを拒否")
+
+    preview_prefix = pathlib.Path(workdir) / "qa" / "preview"
+    render_run = subprocess.run(
+        [sys.executable, str(RENDER), sample, "--out", str(preview_prefix), "--sheet"],
+        capture_output=True, text=True)
+    reviewed_spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    reviewed_spec["pre_preview_review"] = {
+        "status": "pass", "sheet_evidence": "一覧でタイトル位置・余白・密度を確認済み",
+        "slides": {
+            "1": "p.1を個別表示し文字切れと余白を確認済み",
+            "2": "p.2を個別表示し図表と主役を確認済み",
+            "3": "p.3を個別表示し重なりと整列を確認済み",
+        },
+    }
+    spec_path.write_text(json.dumps(reviewed_spec, ensure_ascii=False), encoding="utf-8")
+    preview_check = subprocess.run(
+        [sys.executable, str(SPEC_CHECK), str(spec_path), "--outline", str(outline_path),
+         "--preview-prefix", str(preview_prefix)], capture_output=True, text=True)
+    evidence_path = pathlib.Path(workdir) / "qa" / "qa-evidence.json"
+    map_path = pathlib.Path(workdir) / "qa" / "design-implementation-map.md"
+    init_run = subprocess.run(
+        [sys.executable, str(QA_EVIDENCE), "init", sample, "--spec", str(spec_path),
+         "--preview-prefix", str(preview_prefix), "--json-out", str(evidence_path),
+         "--map-out", str(map_path)], capture_output=True, text=True)
+    pending_run = subprocess.run(
+        [sys.executable, str(QA_EVIDENCE), "check", str(evidence_path)],
+        capture_output=True, text=True)
+    if (render_run.returncode == 0 and preview_check.returncode == 0
+            and init_run.returncode == 0 and pending_run.returncode == 1
+            and "# 設計〜実装対応表" in map_path.read_text(encoding="utf-8")):
+        ok += 1
+        print("ok  事前preview証跡を検査し、生成後に対応表を作る")
+    else:
+        failures += 1
+        print("NG  事前preview証跡を検査し、生成後に対応表を作る")
+
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence["formal_qa"].update(status="pass", evidence={
+        "reopen": "python-pptxで再オープン済み", "outline": "全タイトルと順序を照合済み",
+        "implementation-spec": "全ページの領域と関数を照合済み", "lint": "lint JSONを確認済み",
+    })
+    evidence["design_qa"].update(status="pass", evidence={
+        "signature": "署名の3層を一覧で確認済み", "form-choice": "形式選択を構成と照合済み",
+        "hero": "各ページの主役を個別表示で確認済み", "rhythm": "一覧で密度のリズムを確認済み",
+    })
+    evidence["sheet_review"].update(status="pass", evidence="一覧で余白・密度・色・リズムを確認済み")
+    for slide in evidence["slides"]:
+        n = slide["n"]
+        slide["implementation_match"] = {
+            "status": "pass", "evidence": "p.%dの関数・領域・内容対応を実物と照合済み" % n}
+        slide["individual_review"] = {
+            "status": "pass", "evidence": "p.%dを個別表示し、文字切れ・重なり・余白を確認済み" % n}
+    evidence_path.write_text(json.dumps(evidence, ensure_ascii=False), encoding="utf-8")
+    complete_run = subprocess.run(
+        [sys.executable, str(QA_EVIDENCE), "check", str(evidence_path)],
+        capture_output=True, text=True)
+    overwrite_evidence = subprocess.run(
+        [sys.executable, str(QA_EVIDENCE), "init", sample, "--spec", str(spec_path),
+         "--preview-prefix", str(preview_prefix), "--json-out", str(evidence_path),
+         "--map-out", str(map_path)], capture_output=True, text=True)
+    if complete_run.returncode == 0 and overwrite_evidence.returncode == 2:
+        ok += 1
+        print("ok  形式/デザインQAと全ページ個別・一覧目視の証跡を検査")
+    else:
+        failures += 1
+        print("NG  形式/デザインQAと全ページ個別・一覧目視の証跡を検査")
+
+    duplicate = json.loads(evidence_path.read_text(encoding="utf-8"))
+    for slide in duplicate["slides"]:
+        slide["individual_review"]["evidence"] = "全ページ同じ定型文で確認済み"
+    duplicate_path = pathlib.Path(workdir) / "qa" / "duplicate-evidence.json"
+    duplicate_path.write_text(json.dumps(duplicate, ensure_ascii=False), encoding="utf-8")
+    duplicate_run = subprocess.run(
+        [sys.executable, str(QA_EVIDENCE), "check", str(duplicate_path)],
+        capture_output=True, text=True)
+    if duplicate_run.returncode == 1 and "同じ個別目視所見" in duplicate_run.stderr:
+        ok += 1
+        print("ok  全ページへの同一定型所見を目視根拠として認めない")
+    else:
+        failures += 1
+        print("NG  全ページへの同一定型所見を目視根拠として認めない")
 
     print("\n%d/%d 合格" % (ok, ok + failures))
     return 1 if failures else 0

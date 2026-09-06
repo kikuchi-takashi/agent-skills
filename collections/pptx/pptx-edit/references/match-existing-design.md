@@ -16,7 +16,7 @@ subprocess.run([sys.executable, "<skills>/pptx-review/scripts/extract_style.py",
 
 ## 2. 複製元から作る（新規に組み立てない）
 
-`design-lock.md` の「複製元」に、タイトル・本文・出典それぞれの既存図形が書いてある。新しい要素は、**その図形を複製して文言だけ差し替える。**
+`design-lock.md` の「複製元」に、タイトル・本文・出典それぞれの既存図形が書いてある。新しい要素は、**その図形を複製して文言だけ差し替える。** ただし、次の `copy.deepcopy` が安全なのは、relationshipを持たないテキストボックスと基本図形だけである。画像、図表、SmartArt、埋め込みオブジェクト、動画、ハイパーリンク付き図形を別スライドへ要素単位でコピーしてはいけない。`r:embed` / `r:link` だけが移り、移植先の `.rels` が無いと内容が消える。
 
 ```python
 import copy
@@ -41,6 +41,8 @@ for para in new_shape.text_frame.paragraphs:
         for r in para.runs[1:]:
             r.text = ""
 ```
+
+画像・図表などrelationshipを持つ要素が必要なら、要素ではなくスライド全体と関連部品を `ooxml-editing.md` の手順で複製する。画像だけを差し替える場合は、新しい画像を `add_picture` で追加して元図形の位置・寸法・crop・回転・重ね順を移し、元図形を削除する。図表は同じスライド上で `replace_data` し、系列数やカテゴリ数を変えた場合は軸・凡例・ラベルをPowerPoint互換描画で確認する。
 
 複製すれば、書体・サイズ・色・行間・箇条書き記号・余白がすべて既存のまま引き継がれる。**位置と大きさは引き継がない。** 複製元の座標と箱の大きさも一緒に写るので、`design-lock.md` の値で置き直す。忘れると lint に `MARGIN_DRIFT`（位置）や `TEXT_OVERFLOW_LIKELY`（高さ不足）が出る。ゼロから `add_textbox` すると、PowerPoint の既定値（Calibri 18pt 黒、行間 1.0）になり、それが「浮いた」ページの正体になる。
 

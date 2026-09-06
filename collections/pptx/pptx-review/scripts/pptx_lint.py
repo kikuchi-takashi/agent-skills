@@ -833,19 +833,19 @@ def line_height(para, size):
 
 
 def estimate_overflow(shape):
-    """(ratio, confidence) を返す。ratio は必要高さ / 箱の高さ。"""
+    """(ratio, confidence, axis) を返す。ratio は必要寸法 / 箱の寸法。"""
     box = shape["box"]
     if box is None or not shape["text"]:
         return None
     body_pr = shape["body_pr"]
-    if body_pr is not None and body_pr.find(q("a", "spAutoFit")) is not None:
-        return None
+    autogrow = body_pr is not None and body_pr.find(q("a", "spAutoFit")) is not None
     autofit = body_pr.find(q("a", "normAutofit")) if body_pr is not None else None
     wrap_none = body_pr is not None and body_pr.get("wrap") == "none"
     insets = body_insets(body_pr)
     inner_w = max(box[2] - insets["l"] - insets["r"], 0.1) * 72.0
     inner_h = max(box[3] - insets["t"] - insets["b"], 0.05) * 72.0
     needed = 0.0
+    widest = 0.0
     known = True
     last = len(shape["paragraphs"]) - 1
     for idx, para in enumerate(shape["paragraphs"]):
@@ -857,6 +857,8 @@ def estimate_overflow(shape):
         text = para["text"]
         if wrap_none:
             lines = max(1, text.count("\n") + 1)
+            widest = max([widest] + [MEASURER.width(segment, size)
+                                     for segment in text.split("\n")])
         else:
             lines = 0
             for segment in text.split("\n"):
@@ -865,9 +867,15 @@ def estimate_overflow(shape):
     if needed <= 0:
         return None
     confidence = ("measured" if MEASURER.enabled else "estimate") if known else "size-inherited"
+    if autogrow:
+        confidence = "autogrow"
     if autofit is not None:
         confidence = "autofit"
-    return needed / inner_h, confidence
+    height_ratio = needed / inner_h
+    width_ratio = widest / inner_w if wrap_none and inner_w else 0.0
+    if width_ratio > height_ratio:
+        return width_ratio, confidence, "width"
+    return height_ratio, confidence, "height"
 
 
 def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes, theme=None, bg_hex=None):
@@ -908,7 +916,12 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes, theme=N
         result = estimate_overflow(s)
         if result is None:
             continue
-        ratio, confidence = result
+        ratio, confidence, axis = result
+        if confidence == "autogrow":
+            add("AUTOFIT_GROW", "warning",
+                "文字に合わせて箱が自動伸長する設定（%s比 %.2f）。文言変更で後続要素へ重なるため、箱を固定して収まりを確認" %
+                ("横" if axis == "width" else "縦", ratio), s)
+            continue
         if confidence == "autofit":
             if ratio >= 1.0:
                 add("AUTOFIT_SHRINK", "info",
@@ -916,10 +929,12 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes, theme=N
             continue
         if ratio >= 1.15:
             add("TEXT_OVERFLOW_LIKELY", "error" if confidence in ("estimate", "measured") else "warning",
-                "文字が箱に収まらない見込み（必要高さ/箱高さ=%.2f、%s）。描画画像で確認" % (ratio, confidence), s)
+                "文字が箱に収まらない見込み（必要%s/箱%s=%.2f、%s）。描画画像で確認" %
+                ("幅" if axis == "width" else "高さ", "幅" if axis == "width" else "高さ", ratio, confidence), s)
         elif ratio >= 1.02:
             add("TEXT_OVERFLOW_POSSIBLE", "warning",
-                "文字が箱にぎりぎり（比 %.2f、%s）。描画画像で確認" % (ratio, confidence), s)
+                "文字が箱にぎりぎり（%s比 %.2f、%s）。描画画像で確認" %
+                ("横" if axis == "width" else "縦", ratio, confidence), s)
 
     # テキスト同士の重なり
     for i, a in enumerate(text_shapes):
@@ -1658,6 +1673,29 @@ def package_findings(pkg, slides):
             if target not in pkg.names:
                 findings.append({"code": "BROKEN_RELATIONSHIP", "severity": "error",
                                  "message": "%s の %s が指す %s が存在しない（開けないか修復ダイアログが出る）" % (owner, rid, target)})
+    # 図形XMLだけを別スライドへ deepcopy すると r:embed 等は残るが、移植先の
+    # .rels に同じ rId が無い。relsファイル自体が無い場合も含め、XML→rels の
+    # 逆向き参照を全partで検査する。
+    for owner in sorted(name for name in pkg.names if name.endswith(".xml")):
+        folder, _, base = owner.rpartition("/")
+        rel_name = (folder + "/_rels/" if folder else "_rels/") + base + ".rels"
+        known_ids = set()
+        if rel_name in pkg.names:
+            known_ids = {rel.get("Id") for rel in pkg.xml(rel_name).findall(q("rel", "Relationship"))}
+        try:
+            owner_root = pkg.xml(owner)
+        except ET.ParseError:
+            continue
+        used_ids = set()
+        for node in owner_root.iter():
+            for attr, value in node.attrib.items():
+                if attr.startswith("{%s}" % NS["r"]) and value:
+                    used_ids.add(value)
+        for rid in sorted(used_ids - known_ids):
+            findings.append({
+                "code": "BROKEN_RELATIONSHIP_REFERENCE", "severity": "error",
+                "message": "%s が %s を参照するが、その relationship が無い。図形XMLだけを別スライドへコピーしていないか確認" %
+                           (owner, rid)})
     try:
         types = pkg.zip.read("[Content_Types].xml").decode("utf-8", "ignore")
     except KeyError:

@@ -4,7 +4,7 @@ description: "既存のPowerPoint（.pptx/.potx）を、元のデザインに揃
 license: MIT
 compatibility: "Python 3.9+ と python-pptx（lxml、Pillow）。構造変更は zipfile と XML 編集。設計値の抽出・検査・描画は pptx-review 同梱のスクリプト。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に使う。"
 metadata:
-  version: "1.5.0"
+  version: "1.7.0"
   publisher: "agent-skills"
   bundle: pptx-suite
 ---
@@ -43,6 +43,8 @@ pptx-create の工程0と同じ表で経路を決める。`python-pptx` が無�
 - 図表の数値の変更（意味が変わる）
 - 「AIっぽさを消す」など判断を伴う一括修正（`references/cleanup-checklist.md` で対象を列挙して見せる）
 
+ページを追加する、原型を変える、または意味領域を組み替える場合は、変更対象について pptx-create の `references/implementation-spec.md` と同じ `implementation-spec.json` / `.md` を編集前に作る。文言だけの差し替えでは `changes.md` で足りる。
+
 ### 3. 手法の選択
 
 | 変更 | 手法 |
@@ -72,12 +74,14 @@ pptx-create の工程0と同じ表で経路を決める。`python-pptx` が無�
 ### 5. 品質確認（`deck/qa/`）
 
 - 再オープン検査: Python で `Presentation("deck/output.pptx")` を開く。例外が出れば壊れている。
+- **編集前後のレイアウト比較**: `pptx-review/scripts/layout_guard.py deck/original.pptx deck/output.pptx --strict --json-out deck/qa/layout-guard.json` を実行する。座標・寸法、重ね順、placeholder、段落/run書式、自動調整、画像crop、表の行列寸法、theme/layout、共有部品の変化を図形IDで比較する。意図した変化だけを `--allow deck/layout-allow.json` に理由つきで登録し、未許可の変化を0にする。原因と検査範囲はpptx-reviewの `references/layout-stability.md`。
 - pptx-review があれば `--lock deck/design-lock.json --baseline deck/before/lint.json` を付けて lint を通し、**新しく増えた指摘**を 0 にする。元からある指摘は `inherited` として集計され、報告に書く。
 - **統一性の指摘**（`TITLE_POSITION_DRIFT`、`TITLE_SIZE_DRIFT`、`MARGIN_DRIFT`、`BODY_SIZE_DRIFT`、`PALETTE_DRIFT`）が自分の触ったページに出ていたら、必ず直す。これが「修正したページだけデザインが違う」の直接の検出である。
 - 描画の一覧（`render_preview.py --sheet`）で、触ったページが他と同じ骨格に見えるかを確かめる。1枚ずつ見ると気づかない。
 - 触ったページに図表・表を足したなら、`Presentation` で開き直して `shape.has_chart` / `shape.has_table` が真であることを確かめる。lint の `FULL_PAGE_PICTURE` はページの85%以上を占める画像しか見ないので、ページの一部に貼った画像の図表は検出できない。
 - 触ったページを描画して1枚ずつ見る。加えて全体を一覧し、他のページとの整合（タイトル位置、余白、フッター）を確認する。描画の手順は pptx-create の `references/qa.md` ゲート3にある。
 - テキストを再度書き出し、変更前との差分が `deck/changes.md` の範囲に収まっていることを確認する。
+- 実装仕様書を作った編集では、`qa_evidence.py init` で生成後の設計〜実装対応表とQA証跡を作る。形式的QAとデザイン的QAを分け、全ページの個別previewと一覧previewに根拠を記入して `qa_evidence.py check` を通す。
 
 ### 6. 報告
 
@@ -97,8 +101,9 @@ pptx-create の工程0と同じ表で経路を決める。`python-pptx` が無�
 - テーマに無い色・書体を足さない。
 - 新しい要素は複製から作る。空の図形に書式を手で設定しない。
 - 構造変更（追加・削除・並べ替え）を先に、内容変更を後に。
+- `copy.deepcopy(shape._element)` を別スライドへ使うのはrelationshipを持たないテキストボックスと基本図形だけ。画像・図表・SmartArt・リンクはスライドごと複製する。
 - 描画画像を見ずに完了と言わない。
 
 ## 出力
 
-編集済みの `.pptx`（別名）と、変更一覧、未解決事項、品質確認の証拠を返す。
+編集済みの `.pptx`（別名）と、変更一覧、未解決事項、形式的QAとデザイン的QAの証拠を返す。ページ追加・原型変更・領域再編では、スライド実装仕様書と設計〜実装対応表も返す。
