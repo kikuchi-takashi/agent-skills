@@ -320,10 +320,44 @@ def _(g, p):
     g["slide_appendix"](p, "算出の前提", ["実績を年換算した。"], "出典: 実績")
 
 
-@case("図表7種がすべて作れる", forbid=["TEXT_OVERFLOW_LIKELY"])
+@case("新しい原型（分解・体制・懸念と回答）",
+      forbid=["TEXT_OVERFLOW_LIKELY", "TEXT_OVERLAP", "TEXT_SHAPE_COLLISION",
+              "TEXT_CONTRAST_LOW", "CONNECTOR_DIAGONAL", "CONNECTOR_DETACHED"])
 def _(g, p):
     base(g, p)
-    for kind in ("bar", "bar_stacked", "line", "area", "pie", "doughnut", "bar_h"):
+    g["slide_tree"](p, "遅延291件は、3つの要因に分解できる", "遅延 291件",
+                    [("在庫要因 183件", ["滞留による欠品 121件", "配置ミス 62件"]),
+                     ("輸送要因 70件", ["便の不足 44件"]),
+                     ("その他 38件", ["受注情報の遅れ 38件"])], "出典: WMS")
+    g["slide_roster"](p, "この体制で進めたい",
+                      [("経営企画部", ["全体設計"]), ("物流戦略チーム", ["基準の作成"]),
+                       ("西日本統括部", ["現場の運用"])], source="出典: 体制案")
+    g["slide_qa"](p, "想定される懸念への回答",
+                  [("営業部門の合意が取れないのではないか",
+                    ["引き当ての基準を先に決め、判断を人に委ねない形にする。"]),
+                   ("効果が出るまで3か月かかるのは遅くないか",
+                    ["近畿の先行だけなら1か月で効果が見える。"])], "出典: 事前ヒアリング")
+
+
+@case("散布図と100%積み上げ", forbid=["TEXT_OVERFLOW_LIKELY", "CHART_NEGATIVE_RENDER"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "在庫回転日数が長い拠点ほど、遅延件数も多い")
+    g["chart"](s, g["M"], g["BODY_Y"], 7.0, 3.6, None,
+               [("拠点", [(16.2, 31), (15.1, 28), (24.3, 88), (26.1, 96)])], kind="scatter")
+    s2 = g["blank"](p)
+    g["page_title"](s2, "遅延の内訳は、在庫要因の比率が上がり続けている")
+    g["chart"](s2, g["M"], g["BODY_Y"], 8.0, 3.6, ["4月", "5月", "6月"],
+               [("在庫要因", (40, 45, 52)), ("輸送要因", (35, 33, 30)), ("その他", (25, 22, 18))],
+               kind="bar_stacked_100", fmt="0")
+
+
+@case("図表9種がすべて作れる", forbid=["TEXT_OVERFLOW_LIKELY"])
+def _(g, p):
+    base(g, p)
+    for kind in ("bar", "bar_stacked", "line", "area", "pie", "doughnut", "bar_h",
+                 "bar_stacked_100"):
         s = g["blank"](p)
         g["page_title"](s, "図表 %s を主役にしたページの主張" % kind)
         series = [("系列1", (3.0, 5.0, 4.0))]

@@ -349,6 +349,39 @@ def skeleton(kind, n=None):
                 "photos": [(cx, band_y, cw_, band_h - cap_h - 0.5) for cx, cw_ in cols],
                 "captions": [(cx, band_y + band_h - cap_h - 0.3, cw_, cap_h) for cx, cw_ in cols],
                 "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
+    if kind == "tree":                       # 分解: 1つを要素に割る。2段まで
+        n = n or 3
+        head_h = text_height(1, SIZE["h2"])
+        root_h = head_h + 0.5
+        # 根は上の中央。子は真下に並べる。**横に置くと結線が折れて重なり、
+        # 箱のように見える**（実測でそうなった）
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "root": (band_x + (band_w - 3.6) / 2, band_y, 3.6, root_h),
+                "children": [(cx, band_y + root_h + 0.9, cw_,
+                              band_h - root_h - 1.3)
+                             for cx, cw_ in spread(n, band_x, band_w, gap=0.3)],
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
+    if kind == "roster":                     # 体制: 人や組織を並べる。カードが正しい数少ない形
+        n = n or 4
+        cols = spread(n, band_x, band_w, gap=0.3)
+        photo_h = 1.8
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "photos": [(cx, band_y, cw_, photo_h) for cx, cw_ in cols],
+                "names": [(cx, band_y + photo_h + 0.2, cw_, text_height(1, SIZE["h2"]))
+                          for cx, cw_ in cols],
+                "roles": [(cx, band_y + photo_h + 0.2 + text_height(1, SIZE["h2"]) + 0.1,
+                           cw_, band_h - photo_h - 1.0) for cx, cw_ in cols],
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
+    if kind == "qa":                         # 懸念と回答: 問いは小さく、答えが本体
+        n = n or 3
+        q_h = text_height(1, SIZE["note"])
+        rows = vstack([(band_h - 0.3 * (n - 1)) / n] * n, top=band_y)
+        row_h = (band_h - 0.3 * (n - 1)) / n
+        return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
+                "questions": [(M, y, band_w, q_h) for y in rows],
+                "answers": [(M + 0.5, y + q_h + 0.05, band_w - 0.5, row_h - q_h - 0.05)
+                            for y in rows],
+                "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "table":
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
                 "table": (band_x, band_y, band_w, band_h - 1.6),
@@ -513,16 +546,34 @@ CHART_KINDS = {                            # 用途 → PowerPoint のネイテ�
     "pie": XL_CHART_TYPE.PIE,                   # 全体に対する割合（系列1つ、5区分まで）
     "doughnut": XL_CHART_TYPE.DOUGHNUT,         # 同上。中央に数字を置きたいとき
     "bar_h": XL_CHART_TYPE.BAR_CLUSTERED,       # 項目名が長い比較
+    "bar_stacked_100": XL_CHART_TYPE.COLUMN_STACKED_100,  # 構成比の推移（合計を揃える）
+    "scatter": XL_CHART_TYPE.XY_SCATTER,        # 2変数の関係（相関を主張するとき）
 }
+SCATTER_KINDS = ("scatter",)                    # 点の (x, y) を渡す。カテゴリではない
 
 
 def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0"):
     """ネイティブ図表。kind は CHART_KINDS の名前。series は [(名前, 値の列), ...]。
-    伝えたいことで選ぶ: 比較=bar、変化=line、割合=pie、項目名が長い=bar_h。"""
-    data = CategoryChartData()
-    data.categories = categories
-    for name, values in series:
-        data.add_series(name, values)
+
+    伝えたいことで選ぶ: 比較=bar、変化=line、割合=pie、項目名が長い=bar_h、
+    構成比の推移=bar_stacked_100、2変数の関係=scatter。
+
+    **scatter だけ渡し方が違う。** categories は使わず、series の値を
+    [(x, y), ...] の点の列で渡す。相関を主張するときにだけ使う——点を撒いただけで
+    関係が無いなら、その図は何も言っていない。
+    """
+    if kind in SCATTER_KINDS:
+        from pptx.chart.data import XyChartData
+        data = XyChartData()
+        for name, points in series:
+            ser = data.add_series(name)
+            for px, py in points:
+                ser.add_data_point(px, py)
+    else:
+        data = CategoryChartData()
+        data.categories = categories
+        for name, values in series:
+            data.add_series(name, values)
     chart = slide.shapes.add_chart(CHART_KINDS[kind],
                                    Inches(x), Inches(y), Inches(w), Inches(h), data).chart
     chart.has_title = False
@@ -534,6 +585,18 @@ def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0"):
             ea = etree.SubElement(rpr, qn("a:ea")); latin.addnext(ea); ea.set("typeface", FONT)
     plot = chart.plots[0]
     circular = kind in ("pie", "doughnut")
+    if kind in SCATTER_KINDS:                   # 点の図はデータラベルを出さない（潰れる）
+        # 0.6 系の python-pptx は散布図の has_data_labels を扱えないので触らない
+        for i, ser in enumerate(plot.series):
+            ser.format.line.fill.background()   # 点をつながない
+            ser.marker.format.fill.solid()
+            ser.marker.format.fill.fore_color.rgb = RGBColor.from_string(
+                CHART_SERIES[i % len(CHART_SERIES)])
+            ser.marker.format.line.fill.background()
+        for axis in (chart.value_axis, chart.category_axis):
+            axis.major_gridlines.format.line.color.rgb = RGBColor.from_string(C["line"])
+            axis.tick_labels.font.color.rgb = RGBColor.from_string(C["muted"])
+        return chart
     if not circular:
         plot.gap_width = 80
     plot.has_data_labels = True
@@ -1361,6 +1424,73 @@ def slide_photo_grid(prs, title, photos, captions, source=None):
         picture(s, path, *box, fit="cover")
     for box, cap in zip(k["captions"], captions):
         text(s, *box, lines=cap, size=SIZE["note"], color="muted")
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_tree(prs, title, root, children, source=None):
+    """分解。1つを要素に割って見せる。**2段まで。** 3段目が要るなら分ける。
+
+    children は [(要素の名前, [行...]), ...]。組織図にも、数字の分解にも、
+    論点の分解にも使う。**要素が本当に足し合わせで元に戻るか**を確かめてから使う——
+    戻らないなら、それは分解ではなく単なる列挙である。
+    """
+    s = blank(prs)
+    k = skeleton("tree", len(children))
+    page_title(s, title)
+    expect_count("要素", children, len(k["children"]))
+    head_h = text_height(1, SIZE["h2"])
+    rx, ry, rw, rh = k["root"]
+    root_shape = box_text(s, rx, ry, rw, rh, root, SIZE["h2"], fill="panel", bold=True)
+    for (cx, cy, cw_, chh), (name, lines) in zip(k["children"], children):
+        child = box_text(s, cx, cy, cw_, head_h + 0.4, name, SIZE["body"], bold=True)
+        connect(s, root_shape, child)
+        fit_text(s, cx + 0.1, cy + head_h + 0.5, cw_ - 0.2, chh - head_h - 0.6,
+                 lines, SIZE["body"], color="muted")
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_roster(prs, title, people, photos=None, source=None):
+    """体制。人や組織を並べる。**カードが正しい数少ない形**——並列・無順序・等重み。
+
+    people は [(名前, [役割の行...]), ...]。photos を渡すと上に顔写真を置く。
+    渡さないなら淡い面で場所を取る。序列を付けたいなら、これは使わない
+    （序列があるなら tree で組む）。
+    """
+    s = blank(prs)
+    k = skeleton("roster", len(people))
+    page_title(s, title)
+    expect_count("人", people, len(k["photos"]))
+    for i, (box, (name, roles)) in enumerate(zip(k["photos"], people)):
+        if photos:
+            picture(s, photos[i], *box, fit="cover")
+        else:
+            rect(s, *box, fill="panel")
+    for box, (name, roles) in zip(k["names"], people):
+        text(s, *box, lines=name, size=SIZE["h2"], bold=True)
+    for box, (name, roles) in zip(k["roles"], people):
+        fit_text(s, *box, lines=roles, size=SIZE["note"], color="muted")
+    if source:
+        page_source(s, source)
+    return s
+
+
+def slide_qa(prs, title, pairs, source=None):
+    """懸念と回答。**問いは小さく、答えが本体。** 3〜4組まで。
+
+    pairs は [(問い, [答えの行...]), ...]。表にすると問いと答えが同じ重さに
+    見えるが、相手が知りたいのは答えである。答えを字下げして本文の大きさで置く。
+    """
+    s = blank(prs)
+    k = skeleton("qa", len(pairs))
+    page_title(s, title)
+    expect_count("問答", pairs, len(k["questions"]))
+    for q_box, a_box, (question, answer) in zip(k["questions"], k["answers"], pairs):
+        text(s, *q_box, lines=question, size=SIZE["note"], color="muted")
+        fit_text(s, *a_box, lines=answer, size=SIZE["body"])
     if source:
         page_source(s, source)
     return s
