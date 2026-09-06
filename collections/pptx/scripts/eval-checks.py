@@ -1029,10 +1029,23 @@ def main():
                     and miss.returncode == 1 and miss_names == [])
     except (ValueError, KeyError):
         motif_ok = False
+    # 狙った主題に当たること（語彙を増やしても取りこぼさない）
+    for text, want in (("問い合わせの一次対応が滞留し、待ち時間が伸びている", "窓口"),
+                       ("不採算事業の撤退と選択と集中でポートフォリオを見直す", "剪定"),
+                       ("速度と品質のトレードオフをどこで折り合わせるか", "秤"),
+                       ("契約の条項と準拠すべき規程の参照関係", "索引")):
+        r = subprocess.run([sys.executable, str(motif), "--json", text],
+                           capture_output=True, text=True)
+        try:
+            if want not in [c["name"] for c in json.loads(r.stdout)["candidates"]]:
+                motif_ok = False
+        except ValueError:
+            motif_ok = False
+
     # 語彙を増やしたときに、主題性の薄い文へ誤って当たらないこと
     neutral_hits = 0
     for text in ("新しい人事制度の説明", "会社のミッションと価値観", "来期の組織体制",
-                 "福利厚生の見直し", "オフィス移転のお知らせ"):
+                 "福利厚生の見直し", "オフィス移転のお知らせ", "年末年始の営業について"):
         r = subprocess.run([sys.executable, str(motif), "--json", text],
                            capture_output=True, text=True)
         try:

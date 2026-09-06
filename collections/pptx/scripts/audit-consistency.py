@@ -200,14 +200,16 @@ def check_grammar_catalog():
     if not catalog.exists():
         return
     text = catalog.read_text()
+    grammar_ids = set(re.findall(r'"id": "([a-z-]+)"', text))
+    if len(grammar_ids) < 3:
+        note("文法カタログから id を読めない")
     rubric = (REVIEW / "references" / "review-rubric.md").read_text()
     for code in sorted(set(re.findall(r'"([A-Z_]{4,})"', text))):
         if code not in rubric:
             note("文法カタログが監査基準に無いコード %s を使っている" % code)
     kinds = set(re.findall(r'if kind == "([\w-]+)"', SKELETON))
     for name in sorted(set(re.findall(r"`([a-z][a-z-]+)`", text))):
-        if name in ("answer-led", "situation-complication", "pain-led", "question-evidence",
-                    "chronicle", "before-after", "fact-meaning-action"):
+        if name in grammar_ids:
             continue                                  # 文法の id。原型ではない
         if name in NON_ARCHETYPES or "-" not in name and name.islower() and len(name) < 4:
             continue
