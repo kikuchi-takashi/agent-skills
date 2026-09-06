@@ -534,6 +534,42 @@ def _(g, p):
     g["text"](s, 0.8, 4.6, 8.0, 1.0, ["写真の上に置いた一文。"], g["SIZE"]["h2"], color="bg")
 
 
+@case("順序の無い棒が値順でないと咎める", expect=["CHART_BARS_UNSORTED"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "拠点別の在庫回転日数を比べたページの主張")
+    g["chart"](s, g["M"], g["BODY_Y"], 8.0, 3.0, ["東北", "関東", "中部", "近畿", "中国"],
+               [("回転日数", (16.2, 24.3, 17.8, 26.1, 15.1))])
+
+
+@case("値順に並んだ棒は咎めない", forbid=["CHART_BARS_UNSORTED"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "拠点別の在庫回転日数を大きい順に並べたページの主張")
+    g["chart"](s, g["M"], g["BODY_Y"], 8.0, 3.0, ["中国", "近畿", "中部", "東北", "関東"],
+               [("回転日数", (26.1, 24.3, 17.8, 16.2, 15.1))])
+
+
+@case("円が6区分以上だと咎める", expect=["CHART_PIE_TOO_MANY"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "内訳を円で示したページの主張")
+    g["chart"](s, g["M"], g["BODY_Y"], 6.0, 3.5, ["A", "B", "C", "D", "E", "F"],
+               [("構成比", (30.0, 25.0, 15.0, 12.0, 10.0, 8.0))], kind="pie")
+
+
+@case("系列が5本以上だと咎める", expect=["CHART_TOO_MANY_SERIES"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "系列を多く重ねたページの主張")
+    g["chart"](s, g["M"], g["BODY_Y"], 8.0, 3.0, ["1月", "2月", "3月"],
+               [("系列%d" % i, (1.0 + i, 2.0 + i, 3.0 + i)) for i in range(5)], kind="line")
+
+
 @case("代替テキストの無い図表を咎める", expect=["ALT_TEXT_MISSING"])
 def _(g, p):
     base(g, p)

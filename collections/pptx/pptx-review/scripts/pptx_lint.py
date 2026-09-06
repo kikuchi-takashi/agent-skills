@@ -1369,7 +1369,77 @@ def chart_findings(pkg, part):
                     findings.append({"code": "CHART_NEGATIVE_RENDER", "severity": "warning",
                                      "message": "%s の棒グラフに負の値があるが invertIfNegative が無い。PowerPoint 以外のビューアで負の棒が上向きに見える。系列に val=0 を明示する" % target.rsplit("/", 1)[-1]})
                     break
+        findings.extend(chart_design_findings(root, ns_c, target.rsplit("/", 1)[-1]))
     return findings
+
+
+def series_values(ser, ns_c):
+    out = []
+    for v in ser.iter("{%s}v" % ns_c):
+        try:
+            out.append(float(v.text))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def chart_design_findings(root, ns_c, name):
+    """図表の設計の粗さ。書式ではなく**読み取りやすさ**を見る。
+
+    どれも「必ず直す」ではない。時系列や決まった並び（拠点の順、工程の順）が
+    あるなら並べ替えてはいけないので、重大度は軽微に留める。
+    """
+    out = []
+    tag = lambda t: "{%s}%s" % (ns_c, t)
+
+    # 系列が多いと、色で追えなくなる
+    all_ser = root.iter(tag("ser"))
+    count = sum(1 for _ in all_ser)
+    if count > 4:
+        out.append({"code": "CHART_TOO_MANY_SERIES", "severity": "info",
+                    "message": "%s の系列が %d 本。色で追える上限は3〜4本。主張を支える系列だけ残し、"
+                               "他は罫線色に落とすか図表を分ける" % (name, count)})
+
+    # 円は区分が増えると面積を比べられなくなる
+    for kind in ("pieChart", "doughnutChart", "pie3DChart"):
+        for chart_el in root.iter(tag(kind)):
+            for ser in chart_el.findall(tag("ser")):
+                n = len(series_values(ser, ns_c))
+                if n > 5:
+                    out.append({"code": "CHART_PIE_TOO_MANY", "severity": "info",
+                                "message": "%s の円が %d 区分。5区分を超えると面積を比べられない。棒にする"
+                                           % (name, n)})
+                break
+
+    # 順序に意味の無い棒が値の順に並んでいないと、比較に手間がかかる
+    for chart_el in root.iter(tag("barChart")):
+        sers = chart_el.findall(tag("ser"))
+        if len(sers) != 1:
+            break
+        values = series_values(sers[0], ns_c)
+        if len(values) >= 4 and all(v >= 0 for v in values):
+            if values != sorted(values, reverse=True) and values != sorted(values):
+                out.append({"code": "CHART_BARS_UNSORTED", "severity": "info",
+                            "message": "%s の棒が値の順に並んでいない。時系列や決まった順序が無いなら、"
+                                       "大きい順に並べると比較が速い" % name})
+        break
+
+    # 縦軸が0から始まらない棒は、差を実際より大きく見せる
+    for chart_el in root.iter(tag("barChart")):
+        for axis in root.iter(tag("valAx")):
+            node = axis.find(tag("scaling") + "/" + tag("min"))
+            if node is not None and node.get("val"):
+                try:
+                    if float(node.get("val")) > 0:
+                        out.append({"code": "CHART_AXIS_TRUNCATED", "severity": "warning",
+                                    "message": "%s の棒グラフの縦軸が %s から始まる。棒は長さで量を表すので、"
+                                               "0 から始めないと差が実際より大きく見える"
+                                               % (name, node.get("val"))})
+                except ValueError:
+                    pass
+            break
+        break
+    return out
 
 
 def form_family(shapes, text_shapes, title_shape, cw, ch):

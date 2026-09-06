@@ -35,6 +35,7 @@
 | CONNECTOR_DIAGONAL | 重要 | 斜めの直線で図形を結んでいる。段がずれているなら直角に折る |
 | PALETTE_DRIFT | 重要 | 既存の文字色に近いが違う文字色を使っている（面・線の色差は設計判断として見ない） |
 | CHART_NEGATIVE_RENDER | 重要 | 負の値の棒に invertIfNegative が無い。PowerPoint 以外のビューアで負の棒が上向きに見える |
+| CHART_AXIS_TRUNCATED | 重要 | 棒グラフの縦軸が0から始まっていない。棒は長さで量を表すので、差が実際より大きく見える |
 | ACCENT_LINE_UNDER_TITLE | 重要 | タイトル直下の飾り線 |
 | COLOR_BAND | 重要 | 上端・下端の全幅色帯 |
 | SIDE_STRIPE | 重要 | 側面の縦帯 |
@@ -49,6 +50,9 @@
 | LAYOUT_MONOTONE | 重要 | 同一レイアウトが本文の50%超 |
 | MIXED_FONTS | 重要 | 書体が4種類以上 |
 | DESIGN_LOCK_FONT / DESIGN_LOCK_COLOR | 重要 | ロックに無い書体・色 |
+| CHART_TOO_MANY_SERIES | 軽微 | 図表の系列が5本以上。色で追える上限は3〜4本 |
+| CHART_PIE_TOO_MANY | 軽微 | 円が6区分以上。面積を比べられないので棒にする |
+| CHART_BARS_UNSORTED | 軽微 | 単系列の棒が値の順に並んでいない（時系列や決まった順序があるなら意図的として残す） |
 | CARD_ROW | 軽微 | 同型の塗り面が3枚以上横並び（内容の数と一致すれば可） |
 | EQUAL_EMPHASIS | 軽微 | 同じ大きさの大きな文字が3つ以上、等分に並ぶ。主役が決まっていない（等価なら表にする） |
 | TYPE_SIZE_COUNT | 軽微 | 1ページの字の大きさが5種以上。階層ではなく無秩序になっている |
