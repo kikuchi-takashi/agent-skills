@@ -1261,16 +1261,20 @@ def package_findings(pkg, slides):
 
 def load_baseline(path):
     if not path:
-        return set()
+        return set(), set(), set()
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
-    keys = set()
+    part_keys, legacy_title_keys, deck_codes = set(), set(), set()
     for s in data.get("slides", []):
         for f in s.get("findings", []):
-            keys.add((s.get("title", "")[:40], f.get("code"), f.get("shape", "")))
+            key = (f.get("code"), f.get("shape", ""))
+            if s.get("part"):
+                part_keys.add((s["part"],) + key)
+            else:
+                legacy_title_keys.add((s.get("title", "")[:40],) + key)
     for f in data.get("deck_findings", []):
-        keys.add(("", f.get("code"), ""))
-    return keys
+        deck_codes.add(f.get("code"))
+    return part_keys, legacy_title_keys, deck_codes
 
 
 def load_lock(path):
@@ -1286,7 +1290,15 @@ def load_lock(path):
     if isinstance(data.get("min_font_pt"), (int, float)):
         lock["min_font_pt"] = float(data["min_font_pt"])
     if isinstance(data.get("allow"), list):
-        lock["allow"] = [a for a in data["allow"] if isinstance(a, dict) and a.get("code")]
+        lock["allow"] = []
+        for entry in data["allow"]:
+            if not isinstance(entry, dict) or not entry.get("code"):
+                raise ValueError("design-lock allow entries require code")
+            if not isinstance(entry.get("reason"), str) or not entry["reason"].strip():
+                raise ValueError(
+                    "design-lock allow entry %s requires a non-empty reason" % entry["code"]
+                )
+            lock["allow"].append(entry)
     return lock
 
 
@@ -1340,8 +1352,12 @@ def main(argv=None):
         print("ERROR: presentation.xml が無い。PPTX ではない", file=sys.stderr)
         return 2
 
-    lock = load_lock(args.lock)
-    baseline = load_baseline(args.baseline)
+    try:
+        lock = load_lock(args.lock)
+        baseline_parts, baseline_legacy_titles, baseline_deck_codes = load_baseline(args.baseline)
+    except (OSError, ValueError) as exc:
+        print("ERROR: 設定JSONを読めない: %s" % exc, file=sys.stderr)
+        return 2
     if not slide_order(pkg):
         print("ERROR: スライドが1枚も無い", file=sys.stderr)
         return 2
@@ -1357,7 +1373,8 @@ def main(argv=None):
     deck_findings = package_findings(pkg, slides)
     for index, part in enumerate(slides, start=1):
         if part not in pkg.names:
-            report_slides.append({"index": index, "title": "", "shapes": 0, "chars_fullwidth": 0, "has_notes": False,
+            report_slides.append({"index": index, "part": part, "title": "", "shapes": 0,
+                                  "chars_fullwidth": 0, "has_notes": False,
                                   "findings": [{"code": "SLIDE_PART_MISSING", "severity": "error",
                                                 "message": "%s が ZIP 内に無い" % part}]})
             continue
@@ -1374,6 +1391,7 @@ def main(argv=None):
         deck_state["colors"].update(colors_here)
         deck_state["slide_colors"].append(slide_text_colors(shapes))
         slide_report = lint_slide(index, shapes, canvas, args, lock, deck_state, notes_present(pkg, part))
+        slide_report["part"] = part
         slide_report["findings"].extend(chart_findings(pkg, part))
         report_slides.append(slide_report)
 
@@ -1402,14 +1420,18 @@ def main(argv=None):
     notes_count = sum(1 for s in report_slides if s["has_notes"])
 
     inherited = 0
-    if baseline:
+    if baseline_parts or baseline_legacy_titles or baseline_deck_codes:
         for s in report_slides:
             for f in s["findings"]:
-                if (s["title"][:40], f["code"], f.get("shape", "")) in baseline:
+                finding_key = (f["code"], f.get("shape", ""))
+                part_key = (s["part"],) + finding_key
+                legacy_title_key = (s["title"][:40],) + finding_key
+                if (part_key in baseline_parts
+                        or legacy_title_key in baseline_legacy_titles):
                     f["baseline"] = True
                     inherited += 1
         for f in deck_findings:
-            if ("", f["code"], "") in baseline:
+            if f["code"] in baseline_deck_codes:
                 f["baseline"] = True
                 inherited += 1
 
@@ -1445,13 +1467,17 @@ def main(argv=None):
     }
     output = json.dumps(report, ensure_ascii=False, indent=2)
     if args.json_out:
+        parent = os.path.dirname(args.json_out)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         with open(args.json_out, "w", encoding="utf-8") as fh:
             fh.write(output + "\n")
     print(output)
 
     print("--- pptx_lint: %d slides, %d errors, %d warnings, passed=%s%s%s (text: %s)" % (
         len(slides), errors, warnings, passed,
-        (", %d inherited from baseline" % inherited) if baseline else "",
+        (", %d inherited from baseline" % inherited)
+        if (baseline_parts or baseline_legacy_titles or baseline_deck_codes) else "",
         (", %d allowed by lock" % allowed) if allowed else "",
         "measured with " + os.path.basename(MEASURER.font_path) if MEASURER.enabled else "estimated"), file=sys.stderr)
     for s in report_slides:

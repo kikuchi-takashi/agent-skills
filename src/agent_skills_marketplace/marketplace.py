@@ -73,6 +73,9 @@ def install(query: str, root: Path, target: Path, force: bool = False) -> List[P
         selected = [record for record in records if record.name == query]
         if not selected:
             raise ValueError("skill not found: {0}".format(query))
+        bundle = selected[0].bundle
+        if bundle:
+            selected = [record for record in records if record.bundle == bundle]
 
     _ensure_target_outside_root(root, target)
 

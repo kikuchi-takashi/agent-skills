@@ -25,6 +25,14 @@ class SkillRecord:
             return str(value) if value is not None else None
         return None
 
+    @property
+    def bundle(self) -> Optional[str]:
+        metadata = self.fields.get("metadata", {})
+        if isinstance(metadata, dict):
+            value = metadata.get("bundle")
+            return str(value) if value is not None else None
+        return None
+
     def to_index_entry(self, root: Path) -> Dict[str, Any]:
         entry: Dict[str, Any] = {
             "id": self.name,
@@ -38,6 +46,8 @@ class SkillRecord:
                 entry[key] = self.fields[key]
         if self.version is not None:
             entry["version"] = self.version
+        if self.bundle is not None:
+            entry["bundle"] = self.bundle
         return entry
 
 

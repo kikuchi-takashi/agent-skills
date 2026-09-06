@@ -4,11 +4,14 @@ description: "既存のPowerPoint（.pptx/.potx）を、元のデザインに揃
 license: MIT
 compatibility: "Python 3.9+ と python-pptx（lxml、Pillow）。構造変更は zipfile と XML 編集。設計値の抽出・検査・描画は pptx-review 同梱のスクリプト。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に使う。"
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   publisher: "agent-skills"
+  bundle: pptx-suite
 ---
 
 # pptx-edit — 既存デッキを、そのデザインのまま直す
+
+`pptx-create`、`pptx-edit`、`pptx-review` は `pptx-suite` として一体配布する。抽出・lint・描画では、同じインストール先にある `pptx-review/scripts/` を使う。3スキルの一部だけを配布・導入しない。
 
 ## 原則
 

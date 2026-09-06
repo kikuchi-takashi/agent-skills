@@ -68,6 +68,57 @@ class MarketplaceTests(unittest.TestCase):
             )
             self.assertTrue((target / "demo-skill" / "SKILL.md").exists())
 
+    def test_installing_bundle_member_installs_complete_bundle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "collections"
+            bundled = SKILL.replace(
+                '  version: "1.0.0"',
+                '  version: "1.0.0"\n  bundle: demo-suite',
+            )
+            self.make_skill(root, name="demo-create", text=bundled)
+            self.make_skill(root, name="demo-review", text=bundled)
+            target = Path(directory) / "installed"
+
+            installed = install("demo-create", root, target)
+
+            self.assertEqual(
+                sorted(path.name for path in installed),
+                ["demo-create", "demo-review"],
+            )
+
+    def test_bundle_install_checks_all_destinations_before_copying(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "collections"
+            bundled = SKILL.replace(
+                '  version: "1.0.0"',
+                '  version: "1.0.0"\n  bundle: demo-suite',
+            )
+            self.make_skill(root, name="demo-create", text=bundled)
+            self.make_skill(root, name="demo-review", text=bundled)
+            target = Path(directory) / "installed"
+            (target / "demo-review").mkdir(parents=True)
+
+            with self.assertRaises(FileExistsError):
+                install("demo-create", root, target)
+
+            self.assertFalse((target / "demo-create").exists())
+
+    def test_index_exposes_bundle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "collections"
+            bundled = SKILL.replace(
+                '  version: "1.0.0"',
+                '  version: "1.0.0"\n  bundle: demo-suite',
+            )
+            self.make_skill(root, name="demo-create", text=bundled)
+            self.make_skill(root, name="demo-review", text=bundled)
+
+            index = build_index(root, "Test Marketplace")
+
+            self.assertEqual(
+                {skill["bundle"] for skill in index["skills"]}, {"demo-suite"}
+            )
+
     def test_install_refuses_to_replace_existing_skill(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "collections"
@@ -154,6 +205,21 @@ class MarketplaceTests(unittest.TestCase):
 
             self.assertTrue(
                 any("collection must be lowercase" in error for error in errors)
+            )
+
+    def test_singleton_bundle_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "collections"
+            bundled = SKILL.replace(
+                '  version: "1.0.0"',
+                '  version: "1.0.0"\n  bundle: demo-suite',
+            )
+            self.make_skill(root, text=bundled)
+
+            errors = validate_tree(root)
+
+            self.assertTrue(
+                any("must contain at least two skills" in error for error in errors)
             )
 
     def test_symlink_in_portable_skill_is_rejected(self):

@@ -70,7 +70,8 @@
       "path": "pptx/pptx-create",
       "license": "MIT",
       "compatibility": "Python 3.9+ と python-pptx（lxml、Pillow、XlsxWriter）。着手時に利用できるライブラリを確認して経路を決める。描画確認は pptx-review 同梱の簡易描画、ハーネスが PowerPoint 互換の描画を提供する場合はそれを最終確認に使う。",
-      "version": "1.1.0"
+      "version": "1.2.0",
+      "bundle": "pptx-suite"
     },
     {
       "id": "pptx-edit",
@@ -80,7 +81,8 @@
       "path": "pptx/pptx-edit",
       "license": "MIT",
       "compatibility": "Python 3.9+ と python-pptx（lxml、Pillow）。構造変更は zipfile と XML 編集。設計値の抽出・検査・描画は pptx-review 同梱のスクリプト。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に使う。",
-      "version": "1.1.0"
+      "version": "1.2.0",
+      "bundle": "pptx-suite"
     },
     {
       "id": "pptx-review",
@@ -90,7 +92,8 @@
       "path": "pptx/pptx-review",
       "license": "MIT",
       "compatibility": "Python 3.9+。lint と設計値抽出は標準ライブラリのみ、簡易描画は Pillow。和文の書体ファイルがあれば字形まで描く。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に併用する。",
-      "version": "1.1.0"
+      "version": "1.2.0",
+      "bundle": "pptx-suite"
     },
     {
       "id": "sdd",

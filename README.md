@@ -10,7 +10,7 @@ Agent Skills 互換のスキルを、コレクション単位で整理・検証�
 - マーケットプレイスのインデックスはスキルから自動生成する
 - 初期版は外部サービスを持たず、ローカルファイルと Git リポジトリで運用する
 
-すべての配布対象は `collections/<category>/<skill-name>/SKILL.md` の2階層です。各スキルは単独でコピーでき、コレクション一括インストールでも同じスキル群をフラットに配置します。特定クライアント専用の設定ツリーは配布形式に含めません。
+すべての配布対象は `collections/<category>/<skill-name>/SKILL.md` の2階層です。通常は各スキルを単独でコピーできます。`metadata.bundle` を共有するスキル群は一体の配布物で、メンバーを1つ指定しても全スキルをフラットに配置します。特定クライアント専用の設定ツリーは配布形式に含めません。
 
 ## セットアップ
 
@@ -45,11 +45,14 @@ skills install pdf-extract --root collections --target .installed/skills
 # コレクション内のスキルをまとめてインストール
 skills install collection:pdf --root collections --target .installed/skills
 
+# bundleメンバーを指定するとbundle全体をインストール
+skills install pptx-create --root collections --target .installed/skills
+
 # SDD スキル一式をフラットなスキルディレクトリへインストール
 skills install collection:sdd --root collections --target ~/.agents/skills
 ```
 
-`install` は既存スキルディレクトリを上書きしません。コレクション一括導入でも全出力先を先に検査し、衝突が1件でもあれば何もコピーせず停止します。内容を確認して置き換える場合だけ `--force` を指定してください。
+`install` は既存スキルディレクトリを上書きしません。コレクションとbundleの一括導入では全出力先を先に検査し、衝突が1件でもあれば何もコピーせず停止します。内容を確認して置き換える場合だけ `--force` を指定してください。
 
 ## Codex / Claude Code へのインストール（npx）
 

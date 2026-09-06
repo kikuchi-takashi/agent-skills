@@ -4,11 +4,14 @@ description: "要件・原稿・資料から、編集可能なPowerPoint（.pptx
 license: MIT
 compatibility: "Python 3.9+ と python-pptx（lxml、Pillow、XlsxWriter）。着手時に利用できるライブラリを確認して経路を決める。描画確認は pptx-review 同梱の簡易描画、ハーネスが PowerPoint 互換の描画を提供する場合はそれを最終確認に使う。"
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   publisher: "agent-skills"
+  bundle: pptx-suite
 ---
 
 # pptx-create — 生成AIらしさを消し、設計を安定させて作る
+
+`pptx-create`、`pptx-edit`、`pptx-review` は `pptx-suite` として一体配布する。品質確認や既存デザインの抽出では、同じインストール先にある `pptx-review/scripts/` を使う。3スキルの一部だけを配布・導入しない。
 
 ## 原則
 
@@ -44,7 +47,7 @@ for name in ("pptx", "lxml", "PIL", "xlsxwriter"):
 
 | 能力 | 有るとき | 無いとき |
 |---|---|---|
-| `python-pptx`・`lxml`・`Pillow`・`XlsxWriter` | 通常どおり生成・編集する | 純 Python のもの（`python-pptx`、`XlsxWriter`）は作業ディレクトリに同梱して `sys.path` に加える。`lxml` と `Pillow` は同梱できないため、生成できないことを利用者に伝える |
+| `python-pptx`・`lxml`・`Pillow`・`XlsxWriter` | 通常どおり生成・編集する | 不足している依存を勝手にダウンロード・同梱しない。利用可能な導入方法を利用者に示し、導入されるまで生成できないことを伝える |
 | 簡易描画（`Pillow`） | `render_preview.py` で全ページを描いて確認する | 描画確認を省き、lint と幾何の数値で確認したと報告する |
 | 素材の読み込み・加工（PDF・Word・Excel・画像処理のライブラリ） | 元資料からの抽出や画像の加工に使う | 利用者に必要な形で素材をもらう |
 

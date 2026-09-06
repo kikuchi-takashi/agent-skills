@@ -169,6 +169,14 @@ def check_components():
         note("layout-catalog.md が挙げる部品 %s が骨格に無い" % name)
 
 
+def check_bundle():
+    """3スキルが同じ一体配布bundleを宣言しているか。"""
+    for skill in ("pptx-create", "pptx-edit", "pptx-review"):
+        text = (ROOT / skill / "SKILL.md").read_text()
+        if not re.search(r"^  bundle: pptx-suite$", text, re.M):
+            note("%s が metadata.bundle: pptx-suite を宣言していない" % skill)
+
+
 def check_chart_kinds():
     """骨格の CHART_KINDS と、文書が挙げる図表の種類が一致するか。"""
     m = re.search(r"CHART_KINDS = \{(.*?)\}", SKELETON, re.S)
@@ -207,6 +215,7 @@ def main():
     check_archetypes()
     check_chart_kinds()
     check_components()
+    check_bundle()
     check_lock_roundtrip(sample)
     print("=== 文書と実装の整合監査 ===")
     for i in issues:

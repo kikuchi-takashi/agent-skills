@@ -102,6 +102,8 @@ def validate_tree(root: Path) -> List[str]:
 
     # Names are repository-wide identifiers.
     seen: Dict[str, Path] = {}
+    bundles: Dict[str, List[Path]] = {}
+    bundle_collections: Dict[str, set] = {}
     for path in sorted(root.rglob("SKILL.md")):
         try:
             record = load_skill(path, root)
@@ -115,6 +117,36 @@ def validate_tree(root: Path) -> List[str]:
             )
         else:
             seen[record.name] = path
+
+        metadata = record.fields.get("metadata", {})
+        bundle = metadata.get("bundle") if isinstance(metadata, dict) else None
+        if bundle is not None:
+            if (
+                not isinstance(bundle, str)
+                or len(bundle) > 64
+                or not NAME_PATTERN.match(bundle)
+            ):
+                errors.append(
+                    "{0}: metadata.bundle must be lowercase kebab-case and "
+                    "1-64 characters".format(path)
+                )
+                continue
+            bundles.setdefault(bundle, []).append(path)
+            bundle_collections.setdefault(bundle, set()).add(record.collection)
+
+    for bundle, paths in sorted(bundles.items()):
+        if len(paths) < 2:
+            errors.append(
+                "bundle '{0}' must contain at least two skills: {1}".format(
+                    bundle, paths[0]
+                )
+            )
+        if len(bundle_collections[bundle]) != 1:
+            errors.append(
+                "bundle '{0}' must stay within one collection: {1}".format(
+                    bundle, ", ".join(sorted(bundle_collections[bundle]))
+                )
+            )
 
     if not files:
         errors.append("no SKILL.md files found under {0}".format(root))

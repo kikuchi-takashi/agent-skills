@@ -123,6 +123,7 @@ class Renderer(object):
         self.theme = L.theme_colors(pkg)
         self.cw, self.ch = L.canvas_size(pkg)
         self.overflows = []
+        self.errors = []
 
     def px(self, inches):
         return int(round(inches * self.scale))
@@ -148,6 +149,7 @@ class Renderer(object):
                 x, y, w, h = shape["box"]
                 draw.rectangle([self.px(x), self.px(y), self.px(x + w), self.px(y + h)], outline=(200, 0, 0), width=2)
                 print("  slide %d: %s の描画に失敗（%s）" % (index, shape["name"] or shape["id"], exc), file=sys.stderr)
+                self.errors.append((index, shape["name"] or shape["id"], str(exc)))
         return img
 
     def background(self, part):
@@ -660,13 +662,17 @@ def main(argv=None):
     parser.add_argument("--sheet", action="store_true", help="一覧画像 <out>-sheet.png も作る")
     args = parser.parse_args(argv)
 
-    pkg = L.Package(args.pptx)
+    try:
+        pkg = L.Package(args.pptx)
+        slides = L.slide_order(pkg)
+    except (OSError, ValueError, L.zipfile.BadZipFile, L.ET.ParseError, KeyError) as exc:
+        print("ERROR: %s を解析できない: %s" % (args.pptx, exc), file=sys.stderr)
+        return 2
     cjk, latin = L.find_fonts()
     if args.font:
         cjk = args.font
     fonts = Fonts(cjk, latin)
     L.MEASURER.__init__(cjk or latin)
-    slides = L.slide_order(pkg)
     targets = parse_slides(args.slides, len(slides))
     renderer = Renderer(pkg, args.scale, fonts)
     out_dir = os.path.dirname(args.out)
@@ -678,6 +684,7 @@ def main(argv=None):
         part = slides[index - 1]
         if part not in pkg.names:
             print("  slide %d: 部品が無い" % index, file=sys.stderr)
+            renderer.errors.append((index, part, "スライド部品が無い"))
             continue
         img = renderer.render_slide(part, index)
         path = "%s-%s.png" % (args.out, str(index).zfill(width))
@@ -693,6 +700,9 @@ def main(argv=None):
         print("overflow（赤枠）:")
         for index, name, amount in renderer.overflows:
             print("  slide %d %s: %.2fin 超過" % (index, name, amount))
+    if renderer.errors:
+        print("render errors: %d" % len(renderer.errors), file=sys.stderr)
+        return 1
     return 0
 
 

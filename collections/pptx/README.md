@@ -1,6 +1,6 @@
 # PPTX Skill Set
 
-PowerPoint（`.pptx`）の設計、生成、編集、監査を一貫した品質基準で行う Agent Skills コレクションです。内容設計、デザインロック、編集可能な成果物、機械検査、描画確認を組み合わせ、用途に合ったデッキを再現可能な形で仕上げます。
+PowerPoint（`.pptx`）の設計、生成、編集、監査を一貫した品質基準で行う Agent Skills bundleです。`pptx-create`、`pptx-edit`、`pptx-review` の3スキルを `pptx-suite` として一体配布し、内容設計、デザインロック、編集可能な成果物、機械検査、描画確認を組み合わせます。
 
 ## スキルを選ぶ
 
@@ -40,7 +40,14 @@ PowerPoint（`.pptx`）の設計、生成、編集、監査を一貫した品質
 skills install collection:pptx --root collections --target ~/.agents/skills
 ```
 
-3つのスキルはインストール先へフラットにコピーされ、それぞれ単独でも利用できます。`pptx-review` には次の補助ツールが含まれます。
+3つのスキルはインストール先へフラットにコピーされますが、配布単位は常に `pptx-suite` 全体です。このリポジトリのCLIでは、`pptx-create`、`pptx-edit`、`pptx-review` のどれか1つを指定しても3つすべてを原子的に導入します。外部の `npx skills` を使う場合は、コレクションパスに対して `--skill '*'` を指定し、一部だけを導入しないでください。
+
+```bash
+npx skills add kikuchi-takashi/agent-skills/collections/pptx \
+  --skill '*' --agent codex --global --yes
+```
+
+`pptx-review` にはbundle共通の次の補助ツールが含まれます。
 
 - `extract_style.py`: 既存デッキからデザインロックを抽出する
 - `pptx_lint.py`: OOXMLを解析し、構造・配置・文字・デザインの問題を報告する
@@ -84,7 +91,7 @@ for name in modules:
 
 ## 検証済みの互換基準
 
-Python 3.9、python-pptx 0.6.21、Pillow 8.3.2を互換基準とし、骨格の20原型、3本の監査ツール、42件の評価ケースで動作を確認しています。実行時に取得したライブラリの版は、再現条件としてQA結果に残します。
+Python 3.9、python-pptx 0.6.21、Pillow 8.3.2を互換基準とし、骨格の20原型、3本の監査ツール、46件の評価ケースで動作を確認しています。実行時に取得したライブラリの版は、再現条件としてQA結果に残します。
 
 ## 用途別に束ねる例
 
@@ -94,7 +101,7 @@ Python 3.9、python-pptx 0.6.21、Pillow 8.3.2を互換基準とし、骨格の2
 
 `collections/pptx/scripts/` はコレクション全体の保守用検査です。各スキルの配布パッケージには含まれません。
 
-- `eval-checks.py`: 42件のケースでlintの検出と非検出を確認する
+- `eval-checks.py`: 46件のケースでlintの検出・非検出と運用上の回帰を確認する
 - `audit-consistency.py`: 文書、骨格コード、監査ツールの数値・名称・オプションを照合する
 
 変更後はリポジトリルートで実行します。
@@ -109,4 +116,12 @@ python3 -m agent_skills_marketplace index --root collections --output marketplac
 
 ## 参考資料と由来
 
-設計原則と評価観点は、anthropics/skills、EveryInc/hands-on-deck、addsumtech/slides_maker、Gabberflast/academic-pptx-skill、LearnPrompt/humanize-ppt、および複数の公開PPTXスキルを調査して構成しています。このコレクションの文章とコードは日本語で独自に実装しています。
+2026-09-06時点で、次の公開資料を比較調査しました。参照したのは役割分離、品質ゲート、編集可能性、ストーリー構成などの一般的な設計観点です。このbundleの文章とコードは独自実装で、第三者のコード、プロンプト、画像、テンプレート、書体は同梱していません。
+
+| 参照先 | 確認したライセンス | このbundleでの扱い |
+|---|---|---|
+| [anthropics/skills — pptx](https://github.com/anthropics/skills/tree/main/skills/pptx) | [独自ライセンス・複製および派生物の制限あり](https://github.com/anthropics/skills/blob/main/skills/pptx/LICENSE.txt) | 動作範囲の比較だけに使用。文章・コード・資産は複製していない |
+| [EveryInc/hands-on-deck](https://github.com/EveryInc/hands-on-deck) | MIT | 検査と編集を分離する考え方を比較。コードは使用していない |
+| [addsumtech/slides_maker](https://github.com/addsumtech/slides_maker) | MIT | ネイティブ編集可能性と独立レビューの観点を比較。コードは使用していない |
+| [Gabberflast/academic-pptx-skill](https://github.com/Gabberflast/academic-pptx-skill) | Proprietary | 学術デッキの役割分離を比較。文章・コードは使用していない |
+| [LearnPrompt/humanize-ppt](https://github.com/LearnPrompt/humanize-ppt) | MIT | 聴衆とストーリー構成の観点を比較。コードは使用していない |

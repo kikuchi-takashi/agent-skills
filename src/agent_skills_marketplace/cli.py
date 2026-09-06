@@ -52,10 +52,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     install_parser = subparsers.add_parser(
-        "install", help="install one skill or an entire collection"
+        "install", help="install one skill, its bundle, or an entire collection"
     )
     install_parser.add_argument(
-        "query", help="skill name or collection:<category>"
+        "query", help="skill name (bundle members expand) or collection:<category>"
     )
     _common_root(install_parser)
     install_parser.add_argument(

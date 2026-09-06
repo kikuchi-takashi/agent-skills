@@ -508,6 +508,101 @@ def main():
         else:
             ok += 1
             print("ok  %s" % name)
+
+    # 出力先はスキルの手順どおり、事前作成なしでも書き出せる。
+    sample = os.path.join(workdir, "case-00.pptx")
+    nested_lock = os.path.join(workdir, "nested", "qa", "lock.json")
+    nested_lint = os.path.join(workdir, "nested", "report", "lint.json")
+    extract = ROOT / "pptx-review" / "scripts" / "extract_style.py"
+    r1 = subprocess.run([sys.executable, str(extract), sample, "--json-out", nested_lock],
+                        capture_output=True, text=True)
+    r2 = subprocess.run([sys.executable, str(LINT), sample, "--json-out", nested_lint],
+                        capture_output=True, text=True)
+    if (r1.returncode == 0 and r2.returncode < 2
+            and os.path.exists(nested_lock) and os.path.exists(nested_lint)):
+        ok += 1
+        print("ok  出力先ディレクトリの自動作成")
+    else:
+        failures += 1
+        print("NG  出力先ディレクトリの自動作成")
+
+    # タイトルを編集しても、同じページ・図形の既存指摘はbaselineとして残る。
+    baseline = os.path.join(workdir, "baseline.json")
+    changed = os.path.join(workdir, "baseline-title-changed.pptx")
+    subprocess.run([sys.executable, str(LINT), sample, "--json-out", baseline], capture_output=True)
+    from pptx import Presentation
+    changed_prs = Presentation(sample)
+    title_shape = next(
+        sh for sh in changed_prs.slides[2].shapes
+        if sh.has_text_frame and sh.text.strip()
+    )
+    title_shape.text_frame.paragraphs[0].runs[0].text = "変更後のタイトル"
+    changed_prs.save(changed)
+    changed_report = os.path.join(workdir, "baseline-title-changed.json")
+    subprocess.run([sys.executable, str(LINT), changed, "--baseline", baseline,
+                    "--json-out", changed_report], capture_output=True)
+    report = json.load(open(changed_report, encoding="utf-8"))
+    inherited = [f for f in report["slides"][2]["findings"]
+                 if f["code"] == "LAYOUT_REPEATED" and f.get("baseline")]
+    if inherited:
+        ok += 1
+        print("ok  タイトル変更後のbaseline照合")
+    else:
+        failures += 1
+        print("NG  タイトル変更後のbaseline照合")
+
+    # 並べ替え後に同じページ番号・図形名へ出た新規指摘を、既存扱いしない。
+    scope = env(workdir)
+    reorder_prs = scope["new_deck"]()
+    for title, body in (("ページAの主張", "🚀 既存の指摘"),
+                        ("ページBの主張", "通常の本文")):
+        slide = scope["blank"](reorder_prs)
+        scope["page_title"](slide, title)
+        scope["text"](slide, scope["M"], scope["BODY_Y"], 7.0, 1.0,
+                      body, scope["SIZE"]["body"])
+    reorder_before = os.path.join(workdir, "reorder-before.pptx")
+    reorder_prs.save(reorder_before)
+    reorder_baseline = os.path.join(workdir, "reorder-baseline.json")
+    subprocess.run([sys.executable, str(LINT), reorder_before,
+                    "--json-out", reorder_baseline], capture_output=True)
+
+    reordered = Presentation(reorder_before)
+    body_a = next(sh for sh in reordered.slides[0].shapes
+                  if sh.has_text_frame and "既存の指摘" in sh.text)
+    body_b = next(sh for sh in reordered.slides[1].shapes
+                  if sh.has_text_frame and "通常の本文" in sh.text)
+    body_a.text_frame.paragraphs[0].runs[0].text = "通常の本文"
+    body_b.text_frame.paragraphs[0].runs[0].text = "🚀 新しい指摘"
+    reordered.slides._sldIdLst.insert(0, reordered.slides._sldIdLst[-1])
+    reorder_after = os.path.join(workdir, "reorder-after.pptx")
+    reordered.save(reorder_after)
+    reorder_report_path = os.path.join(workdir, "reorder-after.json")
+    subprocess.run([sys.executable, str(LINT), reorder_after,
+                    "--baseline", reorder_baseline, "--json-out", reorder_report_path],
+                   capture_output=True)
+    reorder_report = json.load(open(reorder_report_path, encoding="utf-8"))
+    new_emoji = [f for f in reorder_report["slides"][0]["findings"]
+                 if f["code"] == "EMOJI" and not f.get("baseline")]
+    if new_emoji:
+        ok += 1
+        print("ok  並べ替え後の新規指摘をbaseline扱いしない")
+    else:
+        failures += 1
+        print("NG  並べ替え後の新規指摘をbaseline扱いしない")
+
+    # 理由の無いallowは指摘を無効化できない。
+    invalid_lock = os.path.join(workdir, "allow-without-reason.json")
+    with open(invalid_lock, "w", encoding="utf-8") as fh:
+        json.dump(dict(LOCK, allow=[{"code": "PALETTE_DRIFT"}]), fh, ensure_ascii=False)
+    r3 = subprocess.run([sys.executable, str(LINT), sample, "--lock", invalid_lock],
+                        capture_output=True, text=True)
+    if r3.returncode == 2 and "non-empty reason" in r3.stderr:
+        ok += 1
+        print("ok  理由の無いallowを拒否")
+    else:
+        failures += 1
+        print("NG  理由の無いallowを拒否")
+
     print("\n%d/%d 合格" % (ok, ok + failures))
     return 1 if failures else 0
 

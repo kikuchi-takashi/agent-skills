@@ -4,11 +4,14 @@ description: "PowerPoint（.pptx）を変更せずに監査し、はみ出し・
 license: MIT
 compatibility: "Python 3.9+。lint と設計値抽出は標準ライブラリのみ、簡易描画は Pillow。和文の書体ファイルがあれば字形まで描く。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に併用する。"
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   publisher: "agent-skills"
+  bundle: pptx-suite
 ---
 
 # pptx-review — 変更せずに監査し、証拠つきで報告する
+
+`pptx-create`、`pptx-edit`、`pptx-review` は `pptx-suite` として一体配布する。このスキルが同梱するスクリプトは、3スキル共通の抽出・lint・描画基盤である。3スキルの一部だけを配布・導入しない。
 
 ## 役割
 
@@ -28,9 +31,10 @@ metadata:
 ### 0. 設計値の抽出（既存デッキの監査、または編集の前）
 
 ```python
-import subprocess, sys
+import os, subprocess, sys
+os.makedirs("qa", exist_ok=True)
 subprocess.run([sys.executable, "scripts/extract_style.py", "deck.pptx",
-                "--json-out", "qa/design-lock.json", "--md-out", "qa/design-lock.md"])
+                "--json-out", "qa/design-lock.json", "--md-out", "qa/design-lock.md"], check=True)
 ```
 
 タイトルの位置・サイズ・色、本文の左端とサイズ、出典の位置、余白、書体、色、複製元を実測して書き出す。ロックが与えられていない監査では、これを「そのデッキ自身の正」として使い、次の機械検査に `--lock qa/design-lock.json` で渡す。
@@ -39,8 +43,10 @@ subprocess.run([sys.executable, "scripts/extract_style.py", "deck.pptx",
 
 ```python
 import subprocess, sys
-subprocess.run([sys.executable, "scripts/pptx_lint.py", "deck.pptx", "--mode", "doc",
-                "--lock", "design-lock.json", "--json-out", "qa/lint.json"])
+result = subprocess.run([sys.executable, "scripts/pptx_lint.py", "deck.pptx", "--mode", "doc",
+                         "--lock", "design-lock.json", "--json-out", "qa/lint.json"])
+if result.returncode >= 2:
+    raise RuntimeError("pptx_lint.py が異常終了した")
 ```
 
 - 標準出力に JSON、標準エラーに要約。`errors` があれば終了コード 1。`--strict` で warning も失敗扱い。
@@ -56,7 +62,8 @@ subprocess.run([sys.executable, "scripts/pptx_lint.py", "deck.pptx", "--mode", "
 
 ```python
 import subprocess, sys
-subprocess.run([sys.executable, "scripts/render_preview.py", "deck.pptx", "--out", "qa/preview", "--sheet"])
+subprocess.run([sys.executable, "scripts/render_preview.py", "deck.pptx",
+                "--out", "qa/preview", "--sheet"], check=True)
 # 枚数が多ければ --slides 1-6 のように分ける。書体ファイルがあれば --font path.ttf
 ```
 

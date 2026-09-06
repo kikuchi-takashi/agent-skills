@@ -267,13 +267,23 @@ def main(argv=None):
     parser.add_argument("--json-out", help="design-lock.json の書き出し先（pptx_lint --lock に渡せる）")
     parser.add_argument("--md-out", help="design-lock.md の書き出し先")
     args = parser.parse_args(argv)
-    pkg = L.Package(args.pptx)
-    lock = extract(pkg)
+    try:
+        pkg = L.Package(args.pptx)
+        lock = extract(pkg)
+    except (OSError, ValueError, L.zipfile.BadZipFile, L.ET.ParseError, KeyError) as exc:
+        print("ERROR: %s を解析できない: %s" % (args.pptx, exc), file=sys.stderr)
+        return 2
     if args.json_out:
+        parent = os.path.dirname(args.json_out)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         with open(args.json_out, "w", encoding="utf-8") as fh:
             json.dump(lock, fh, ensure_ascii=False, indent=2)
         print(args.json_out)
     if args.md_out:
+        parent = os.path.dirname(args.md_out)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         with open(args.md_out, "w", encoding="utf-8") as fh:
             fh.write(to_markdown(lock, args.pptx))
         print(args.md_out)

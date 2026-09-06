@@ -6,7 +6,7 @@
 
 | 必要なもの | 用途 | 無いとき |
 |---|---|---|
-| python-pptx（lxml、Pillow、XlsxWriter に依存） | 生成・編集 | 純 Python の python-pptx と XlsxWriter は作業ディレクトリに同梱し、実行の冒頭で `sys.path.insert(0, "vendor")` する。lxml と Pillow はコンパイル済みが必要で同梱できない。無ければ生成できないと利用者に伝える |
+| python-pptx（lxml、Pillow、XlsxWriter に依存） | 生成・編集 | 不足している依存を勝手にダウンロード・同梱しない。利用可能な導入方法を利用者に示し、導入されるまで生成できないと伝える |
 | Pillow | 簡易描画（pptx-review の `render_preview.py`） | 描画確認ができない。lint（標準ライブラリのみ）だけ通し、確認範囲を報告する |
 | 和文の書体ファイル（.ttf/.otf） | 簡易描画で字形を出す | 無くても描画は動き、和文は文字幅どおりの灰色バーで代替される。レイアウトの確認には足りる |
 
