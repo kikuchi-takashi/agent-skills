@@ -865,6 +865,30 @@ def chrome(slide, page=None, total=None, section=None, logo=None):
         picture(slide, logo, W - M - 1.2, 0.35, 1.2, 0.4, fit="contain")
 
 
+def describe(shape, text):
+    """図・画像・表に代替テキストを付ける。**中身を言う。種類を言わない。**
+
+    「グラフ」「画像」「図」だけでは読み上げても何も伝わらない。そのページで
+    その要素が担っている主張を一文で書く（「拠点別の在庫回転日数。西日本3拠点
+    だけが基準の18日を超える」）。ページのタイトルと同じ文にしない——タイトルは
+    別に読み上げられる。
+
+    python-pptx は代替テキストの入口を持たないので、図形の cNvPr に直接書く。
+    種類（画像・図表・表・グループ）で要素名が違うため、子孫から探す。
+    """
+    if not text or not text.strip():
+        raise ValueError("代替テキストが空。中身を一文で書く")
+    for tag in ("p:cNvPr", "a:cNvPr", "xdr:cNvPr"):
+        try:
+            node = shape._element.find(".//" + qn(tag))
+        except ValueError:
+            continue
+        if node is not None:
+            node.set("descr", text.strip())
+            return shape
+    raise ValueError("この図形には代替テキストを付けられない")
+
+
 def notes(slide, body):
     slide.notes_slide.notes_text_frame.text = body
 
@@ -1196,6 +1220,7 @@ if __name__ == "__main__":
 - **図表の文字にも書体を設定する。** `chart.font.name` と `chart.font.size` を設定し、和文ラベルがあるなら `txPr` に `a:ea` を追加する。
 - **表の行の高さは中身から決める。** 固定にすると、折り返したセルのある行だけが枠から出る。骨格の `table()` は列幅ごとに測って `tbl.rows[i].height` を入れ、`slide_table()` は枠を超えたら例外を出す。
 - **表のセルにも内側余白がある。** `cell.margin_left` などで統一する。表の既定スタイルは色が強いので、`tbl.first_row = False` にして自分で塗る。
+- **画像・図表・表には代替テキストを付ける。** python-pptx に入口が無いので `describe()` が図形の `cNvPr` に `descr` を書く。要素名が種類ごとに違う（`p:cNvPr` / `a:cNvPr`）ので子孫から探す。付けないと読み上げで内容が伝わらず、画像が出ない環境では何も残らない。
 - **画像は縦横比を保つ。** 幅か高さの一方だけ指定する。トリミングは `picture.crop_left` などで行う。
 - **`add_picture` を寸法なしで呼ばない。** 寸法を渡さないと、置かれる実寸が素材の DPI メタデータで決まる。実測では同じ 600×400px が 72dpi で 8.33in、96dpi で 6.25in、300dpi で 2.00in になった。同じ素材がページからはみ出したり豆粒になったりする。骨格の `picture()` は必ず幅と高さを渡す。
 - **EXIF の回転を python-pptx は見ない。** Orientation の付いた写真は横倒しのまま入る（実測: Orientation=6 の画像が回転されずに置かれた）。`ImageOps.exif_transpose()` で画素そのものを回してから置く。CMYK・16bit・パレットの画像もエラーにならずそのまま埋まるので、`convert("RGB")` で揃える。`picture()` がどちらも行う。

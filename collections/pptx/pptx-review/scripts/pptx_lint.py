@@ -410,6 +410,22 @@ KINSOKU_HEAD = ("、。，．・：；？！゛゜ヽヾゝゞ々ー"
 KINSOKU_TAIL = "（〔［｛〈《「『【〘〖〝‘“｟«([{"
 
 
+# 代替テキストとして役に立たない語。種類を言っているだけで中身が無い。
+ALT_USELESS = {"画像", "写真", "図", "図形", "図表", "グラフ", "チャート", "表", "テーブル",
+               "イラスト", "アイコン", "ロゴ", "スクリーンショット", "キャプチャ", "picture",
+               "image", "photo", "chart", "graph", "table", "figure", "diagram", "icon",
+               "logo", "screenshot", "alt", "alt text", "placeholder"}
+
+
+def alt_text_of(el):
+    """図形の代替テキスト。無ければ None。"""
+    for node in el.iter():
+        if node.tag.endswith("}cNvPr"):
+            value = (node.get("descr") or "").strip()
+            return value or None
+    return None
+
+
 def wrap_count(text, inner_pt, size):
     """幅 inner_pt（pt）に置いたときの行数。**割り算で見積もらない。**
 
@@ -1148,6 +1164,21 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes, theme=N
                     % (worst_ratio, threshold, ground_hex), t)
             if unresolved_text_color:
                 deck_state["contrast_unmeasured"] += 1
+
+    # 代替テキスト: 読み上げと、画像が表示できない環境で内容が伝わるかどうか
+    for s_ in shapes:
+        if s_["kind"] not in ("picture", "chart", "table") or s_["box"] is None:
+            continue
+        x, y, w, h = s_["box"]
+        if w * h < 1.0:                      # 1平方インチ未満の飾りは対象にしない
+            continue
+        alt = alt_text_of(s_["el"])
+        if alt is None:
+            add("ALT_TEXT_MISSING", "info",
+                "%s に代替テキストが無い。そのページで何を示しているかを一文で書く" % s_["kind"], s_)
+        elif alt.strip(" 　。.").lower() in ALT_USELESS:
+            add("ALT_TEXT_USELESS", "info",
+                "代替テキストが「%s」で種類しか言っていない。中身を一文で書く" % alt[:20], s_)
 
     # 図形の中の文字: 書体とサイズが未指定だと、受け手の環境の既定になって崩れる
     for s in shapes:

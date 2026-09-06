@@ -534,6 +534,33 @@ def _(g, p):
     g["text"](s, 0.8, 4.6, 8.0, 1.0, ["写真の上に置いた一文。"], g["SIZE"]["h2"], color="bg")
 
 
+@case("代替テキストの無い図表を咎める", expect=["ALT_TEXT_MISSING"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "図表に代替テキストを付けていないページの主張")
+    g["chart"](s, g["M"], g["BODY_Y"], 7.0, 3.0, ["近畿", "中国"], [("回転日数", (24.3, 26.1))])
+
+
+@case("種類しか言わない代替テキストを咎める", expect=["ALT_TEXT_USELESS"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "代替テキストが種類だけのページの主張")
+    ch = g["chart"](s, g["M"], g["BODY_Y"], 7.0, 3.0, ["近畿", "中国"], [("回転日数", (24.3, 26.1))])
+    g["describe"](next(sh for sh in s.shapes if sh.has_chart), "グラフ")
+
+
+@case("中身を言う代替テキストは咎めない", forbid=["ALT_TEXT_MISSING", "ALT_TEXT_USELESS"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "代替テキストに中身を書いたページの主張")
+    g["chart"](s, g["M"], g["BODY_Y"], 7.0, 3.0, ["近畿", "中国"], [("回転日数", (24.3, 26.1))])
+    g["describe"](next(sh for sh in s.shapes if sh.has_chart),
+                  "拠点別の在庫回転日数。近畿も中国も基準の18日を超える")
+
+
 @case("座標で線を引くと咎める", expect=["CONNECTOR_DIAGONAL"])
 def _(g, p):
     from pptx.util import Inches
