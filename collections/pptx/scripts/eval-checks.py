@@ -19,11 +19,17 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 LINT = ROOT / "pptx-review" / "scripts" / "pptx_lint.py"
+PALETTE_SCRIPT = ROOT / "pptx-create" / "scripts" / "generate_palette.py"
 ENGINE = ROOT / "pptx-create" / "references" / "engine-notes.md"
 BLOCK = re.search(r"```python\n(.*?)```", ENGINE.read_text(), re.S).group(1).replace(
     'if __name__ == "__main__":\n    build()', "")
+TEST_PALETTE = {
+    "bg": "FFFEF8", "text": "17251F", "muted": "5B6F65",
+    "line": "CAD8D0", "panel": "EEF5F0", "primary": "176B55", "accent": "C46A24",
+}
 LOCK = {"fonts": ["Yu Gothic"],
-        "colors": ["FFFFFF", "1A1A1A", "5C5C5C", "D9D9D6", "F4F4F2", "22313F", "B7282E"],
+        "palette_basis": "評価用の緑と橙。固定色への回帰を検出する",
+        "palette": TEST_PALETTE,
         "min_font_pt": 12}
 CASES = []
 
@@ -124,7 +130,8 @@ def _(g, p):
     g["text"](s, g["M"] + 0.08, g["BODY_Y"], 7.0, 1.0, "本文", g["SIZE"]["body"])
 
 
-@case("ロックに登録した指摘は判定から外れる", forbid=["PALETTE_DRIFT"], lock=True)
+@case("ロックに登録した指摘は判定から外れる",
+      forbid=["PALETTE_DRIFT", "DESIGN_LOCK_COLOR"], lock=True)
 def _(g, p):
     base(g, p)
     s = g["blank"](p)
@@ -481,9 +488,42 @@ def main():
         json.dump(LOCK, fh, ensure_ascii=False)
     allow_lock = os.path.join(deck_dir, "allow-lock.json")
     with open(allow_lock, "w", encoding="utf-8") as fh:
-        json.dump(dict(LOCK, allow=[{"code": "PALETTE_DRIFT", "reason": "意図的"}]), fh, ensure_ascii=False)
+        json.dump(
+            dict(
+                LOCK,
+                colors=["222222"],
+                allow=[{"code": "PALETTE_DRIFT", "reason": "意図的"}],
+            ),
+            fh,
+            ensure_ascii=False,
+        )
 
     ok = failures = 0
+    palette_scope = env(workdir)
+    if (
+        palette_scope["C"] == TEST_PALETTE
+        and "22313F" not in palette_scope["C"].values()
+    ):
+        ok += 1
+        print("ok  デザインロックの役割付きpaletteを生成骨格が使う")
+    else:
+        failures += 1
+        print("NG  デザインロックの役割付きpaletteを生成骨格が使う")
+
+    legacy_colors = ["FFFFFF", "222222", "666666", "DDDDDD", "F5F5F5", "123456", "CC5500"]
+    with open(os.path.join(deck_dir, "design-lock.json"), "w", encoding="utf-8") as fh:
+        json.dump({"fonts": ["Yu Gothic"], "colors": legacy_colors}, fh)
+    legacy_scope = env(workdir)
+    expected_legacy = dict(zip(legacy_scope["PALETTE_ROLES"], legacy_colors))
+    if legacy_scope["C"] == expected_legacy:
+        ok += 1
+        print("ok  旧colors形式のデザインロックを互換読み込み")
+    else:
+        failures += 1
+        print("NG  旧colors形式のデザインロックを互換読み込み")
+    with open(os.path.join(deck_dir, "design-lock.json"), "w", encoding="utf-8") as fh:
+        json.dump(LOCK, fh, ensure_ascii=False)
+
     for i, (name, expect, forbid, fn, use_lock) in enumerate(CASES):
         scope = env(workdir)
         prs = scope["new_deck"]()
@@ -602,6 +642,128 @@ def main():
     else:
         failures += 1
         print("NG  理由の無いallowを拒否")
+
+    invalid_palette = os.path.join(workdir, "palette-without-basis.json")
+    missing_basis = dict(LOCK)
+    missing_basis.pop("palette_basis")
+    with open(invalid_palette, "w", encoding="utf-8") as fh:
+        json.dump(missing_basis, fh)
+    r4 = subprocess.run(
+        [sys.executable, str(LINT), sample, "--lock", invalid_palette],
+        capture_output=True,
+        text=True,
+    )
+    if r4.returncode == 2 and "palette_basis" in r4.stderr:
+        ok += 1
+        print("ok  根拠の無いpaletteを拒否")
+    else:
+        failures += 1
+        print("NG  根拠の無いpaletteを拒否")
+
+    intent_path = pathlib.Path(workdir) / "palette-intent.json"
+    candidates_path = pathlib.Path(workdir) / "palette-candidates.json"
+    preview_path = pathlib.Path(workdir) / "palette-candidates.pptx"
+    generated_lock_path = pathlib.Path(workdir) / "generated-design-lock.json"
+    intent = {
+        "basis": "医療機器の白い筐体と状態表示。強調色は要対応を示す",
+        "surface": "light",
+        "accent_meaning": "要対応",
+        "anchor_color": "167C80",
+        "fonts": ["Yu Gothic"],
+        "min_font_pt": 12,
+    }
+    intent_path.write_text(json.dumps(intent, ensure_ascii=False), encoding="utf-8")
+    palette_run = subprocess.run(
+        [
+            sys.executable, str(PALETTE_SCRIPT), str(intent_path),
+            "--candidates-out", str(candidates_path),
+            "--preview-pptx", str(preview_path),
+            "--select", "auto", "--lock-out", str(generated_lock_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    brand_intent_path = pathlib.Path(workdir) / "brand-palette-intent.json"
+    brand_intent_path.write_text(
+        json.dumps({
+            "basis": "利用者指定のブランド色を主色として保持する",
+            "surface": "light",
+            "brand_colors": ["167C80"],
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    brand_run = subprocess.run(
+        [sys.executable, str(PALETTE_SCRIPT), str(brand_intent_path)],
+        capture_output=True,
+        text=True,
+    )
+    try:
+        generated = json.loads(candidates_path.read_text(encoding="utf-8"))
+        generated_lock = json.loads(generated_lock_path.read_text(encoding="utf-8"))
+        brand_generated = json.loads(brand_run.stdout)
+        from pptx import Presentation
+        preview_slides = len(Presentation(str(preview_path)).slides)
+        accents = {c["palette"]["accent"] for c in generated["candidates"]}
+        primaries = {c["palette"]["primary"] for c in generated["candidates"]}
+        checks_pass = all(
+            c["checks"]["text_contrast"] >= 4.5
+            and c["checks"]["muted_contrast"] >= 4.5
+            and c["checks"]["primary_contrast"] >= 3.0
+            and c["checks"]["accent_contrast"] >= 3.0
+            and c["checks"]["color_vision_distance"] >= 45
+            for c in generated["candidates"]
+        )
+        palette_ok = (
+            palette_run.returncode == 0
+            and len(generated["candidates"]) == 3
+            and len(accents) == 3
+            and len(primaries) == 3
+            and preview_slides == 6
+            and set(generated_lock["palette"]) == set(TEST_PALETTE)
+            and len(generated_lock["chart_series"]) == 4
+            and brand_run.returncode == 0
+            and all(
+                c["palette"]["primary"] == "167C80"
+                for c in brand_generated["candidates"]
+            )
+            and checks_pass
+        )
+    except (OSError, ValueError, KeyError, json.JSONDecodeError):
+        palette_ok = False
+    if palette_ok:
+        ok += 1
+        print("ok  高度デザイン用paletteを3案と比較PPTXへ自動生成")
+    else:
+        failures += 1
+        print("NG  高度デザイン用paletteを3案と比較PPTXへ自動生成")
+
+    invalid_intent = pathlib.Path(workdir) / "palette-intent-without-anchor.json"
+    invalid_intent.write_text(
+        json.dumps({"basis": "基準色のない主題", "surface": "light"}),
+        encoding="utf-8",
+    )
+    missing_anchor = subprocess.run(
+        [sys.executable, str(PALETTE_SCRIPT), str(invalid_intent)],
+        capture_output=True,
+        text=True,
+    )
+    overwrite = subprocess.run(
+        [sys.executable, str(PALETTE_SCRIPT), str(intent_path),
+         "--candidates-out", str(candidates_path)],
+        capture_output=True,
+        text=True,
+    )
+    if (
+        missing_anchor.returncode == 2
+        and "requires brand_colors" in missing_anchor.stderr
+        and overwrite.returncode == 2
+        and "output exists" in overwrite.stderr
+    ):
+        ok += 1
+        print("ok  palette自動生成は基準色不足と既存出力の上書きを拒否")
+    else:
+        failures += 1
+        print("NG  palette自動生成は基準色不足と既存出力の上書きを拒否")
 
     print("\n%d/%d 合格" % (ok, ok + failures))
     return 1 if failures else 0

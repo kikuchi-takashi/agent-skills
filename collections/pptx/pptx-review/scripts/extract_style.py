@@ -14,7 +14,7 @@
 使い方:
   python3 extract_style.py deck.pptx [--json-out design-lock.json] [--md-out design-lock.md]
 
-JSON は pptx_lint.py の --lock にそのまま渡せる（fonts / colors / min_font_pt / allow を含む）。
+JSON は pptx_lint.py の --lock にそのまま渡せる（fonts / palette / colors / min_font_pt / allow を含む）。
 """
 
 import argparse
@@ -49,6 +49,36 @@ def resolve_hex(color, theme):
         return color[1]
     name = {"bg1": "lt1", "tx1": "dk1", "bg2": "lt2", "tx2": "dk2"}.get(color[1], color[1])
     return theme.get(name)
+
+
+def inferred_palette(theme, title_colors, body_colors, text_colors, fill_colors, line_colors):
+    """テーマと実使用色から生成用の役割を推定する。編集時は複製元を優先する。"""
+    def first(*values):
+        return next((v.upper() for v in values if isinstance(v, str) and len(v) == 6), None)
+
+    def common_except(counter, excluded):
+        return next((c for c, _ in counter.most_common() if c not in excluded), None)
+
+    bg = first(theme.get("lt1"), "FFFFFF")
+    text = first(mode(body_colors), mode(title_colors), theme.get("dk1"), "1A1A1A")
+    primary = first(
+        theme.get("accent1"), common_except(fill_colors, {bg}), mode(title_colors), text
+    )
+    accent = first(
+        theme.get("accent2"), theme.get("accent3"),
+        common_except(fill_colors, {bg, primary}), primary
+    )
+    muted = first(
+        theme.get("dk2"), common_except(text_colors, {text}), text
+    )
+    line = first(mode(line_colors), theme.get("lt2"), muted)
+    panel = first(
+        theme.get("lt2"), common_except(fill_colors, {bg, primary, accent}), bg
+    )
+    return {
+        "bg": bg, "text": text, "muted": muted, "line": line,
+        "panel": panel, "primary": primary, "accent": accent,
+    }
 
 
 def extract(pkg):
@@ -197,9 +227,17 @@ def extract(pkg):
         "donors": donors,
         "slides": per_slide,
     }
+    palette = inferred_palette(
+        theme, title_colors, body_colors, text_colors, fill_colors, line_colors
+    )
+    palette_colors = list(dict.fromkeys(palette.values()))
     lock = {
         "fonts": [f for f, _ in fonts.most_common()] or [theme.get("minorFont", {}).get("ea") if isinstance(theme.get("minorFont"), dict) else None],
-        "colors": [c for c, _ in used_colors.most_common(12)],
+        "palette_basis": "既存デッキのテーマと実使用色から自動推定。編集前に目視確認する",
+        "palette": palette,
+        "colors": list(dict.fromkeys(
+            palette_colors + [c for c, _ in used_colors.most_common(12)]
+        )),
         "min_font_pt": min(body_size_list) if body_size_list else 12,
         "allow": [],
         "profile": profile,
@@ -229,6 +267,9 @@ def to_markdown(lock, path):
         "- テーマ: 見出し %s / 本文 %s" % (p["theme"]["fonts"].get("majorFont"), p["theme"]["fonts"].get("minorFont")),
         "",
         "## 色（用途別、頻度順）",
+        "- 役割（自動推定・要確認）: " + ", ".join(
+            "%s=%s" % kv for kv in lock["palette"].items()
+        ),
         "- 文字: " + (", ".join("%s（%d）" % kv for kv in p["colors_by_use"]["text"].items()) or "なし"),
         "- 塗り: " + (", ".join("%s（%d）" % kv for kv in p["colors_by_use"]["fill"].items()) or "なし"),
         "- 線: " + (", ".join("%s（%d）" % kv for kv in p["colors_by_use"]["line"].items()) or "なし"),

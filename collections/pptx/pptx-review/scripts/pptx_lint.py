@@ -1285,8 +1285,50 @@ def load_lock(path):
     lock = {}
     if isinstance(data.get("fonts"), list):
         lock["fonts"] = set(data["fonts"])
+    allowed_colors = set()
+    palette = data.get("palette")
+    if palette is not None:
+        if not isinstance(data.get("palette_basis"), str) or not data[
+            "palette_basis"
+        ].strip():
+            raise ValueError("design-lock palette requires non-empty palette_basis")
+        roles = ("bg", "text", "muted", "line", "panel", "primary", "accent")
+        if not isinstance(palette, dict) or any(role not in palette for role in roles):
+            raise ValueError(
+                "design-lock palette requires bg/text/muted/line/panel/primary/accent"
+            )
+        normalized = {}
+        for role in roles:
+            color = palette[role]
+            if not isinstance(color, str) or not re.fullmatch(
+                r"#?[0-9A-Fa-f]{6}", color
+            ):
+                raise ValueError("design-lock palette %s must be 6-digit HEX" % role)
+            normalized[role] = color.upper().lstrip("#")
+        lock["palette"] = normalized
+        lock["palette_basis"] = data["palette_basis"].strip()
+        allowed_colors.update(normalized.values())
     if isinstance(data.get("colors"), list):
-        lock["colors"] = set(c.upper().lstrip("#") for c in data["colors"])
+        for color in data["colors"]:
+            if not isinstance(color, str) or not re.fullmatch(
+                r"#?[0-9A-Fa-f]{6}", color
+            ):
+                raise ValueError("design-lock colors entries must be 6-digit HEX")
+            allowed_colors.add(color.upper().lstrip("#"))
+    if "chart_series" in data:
+        if not isinstance(data["chart_series"], list) or not data["chart_series"]:
+            raise ValueError("design-lock chart_series must be a non-empty list")
+        lock["chart_series"] = []
+        for color in data["chart_series"]:
+            if not isinstance(color, str) or not re.fullmatch(
+                r"#?[0-9A-Fa-f]{6}", color
+            ):
+                raise ValueError("design-lock chart_series entries must be 6-digit HEX")
+            normalized_color = color.upper().lstrip("#")
+            lock["chart_series"].append(normalized_color)
+            allowed_colors.add(normalized_color)
+    if allowed_colors:
+        lock["colors"] = allowed_colors
     if isinstance(data.get("min_font_pt"), (int, float)):
         lock["min_font_pt"] = float(data["min_font_pt"])
     if isinstance(data.get("allow"), list):
@@ -1326,7 +1368,9 @@ def main(argv=None):
     parser.add_argument("pptx")
     parser.add_argument("--mode", choices=("talk", "doc"), default="doc",
                         help="talk=講演型（注記を含む下限14pt、全角250字）、doc=資料型（下限12pt、全角400字）")
-    parser.add_argument("--lock", help="design-lock.json（fonts / colors / min_font_pt）")
+    parser.add_argument(
+        "--lock", help="design-lock.json（fonts / palette / chart_series / colors / min_font_pt）"
+    )
     parser.add_argument("--min-font", type=float, help="出典以外の全文字の最小サイズ pt（mode の既定を上書き。本文の下限は目視で確認）")
     parser.add_argument("--max-chars", type=int, help="1枚あたりの全角換算文字数の上限")
     parser.add_argument("--title-max", type=int, default=36, help="タイトルの全角換算文字数の上限（storyline.md の予算 30 字に少し余裕）")

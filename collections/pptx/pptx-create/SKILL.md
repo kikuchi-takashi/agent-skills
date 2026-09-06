@@ -4,7 +4,7 @@ description: "要件・原稿・資料から、編集可能なPowerPoint（.pptx
 license: MIT
 compatibility: "Python 3.9+ と python-pptx（lxml、Pillow、XlsxWriter）。着手時に利用できるライブラリを確認して経路を決める。描画確認は pptx-review 同梱の簡易描画、ハーネスが PowerPoint 互換の描画を提供する場合はそれを最終確認に使う。"
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   publisher: "agent-skills"
   bundle: pptx-suite
 ---
@@ -53,7 +53,7 @@ for name in ("pptx", "lxml", "PIL", "xlsxwriter"):
 
 ### 1. ブリーフ（`deck/brief.md`）
 
-聴衆（役職・前提知識・抵抗）、目的（聴衆が終了後にどう変わるか）、場面（**講演型**: 話者が語る／**資料型**: 読んで完結）、持ち時間、枚数、ブランド制約（テンプレ・ロゴ・指定色）、素材、言語を確認する。足りない項目だけ聞く。「任せる」と言われたら仮定を書いて進み、納品時に列挙する。
+聴衆（役職・前提知識・抵抗）、目的（聴衆が終了後にどう変わるか）、場面（**講演型**: 話者が語る／**資料型**: 読んで完結）、持ち時間、枚数、ブランド制約（テンプレ・ロゴ・指定色）、素材、言語、デザイン水準（標準／高度）を確認する。足りない項目だけ聞く。「任せる」と言われたら仮定を書いて進み、納品時に列挙する。利用者が高度・印象的・ブランド性のあるデザインを求めた場合、または社外発表や重要提案では高度を選ぶ。
 
 **既存テンプレ（.pptx/.potx）や既存デッキを渡された場合は、それがデザインロックになる。** 工程3で新しい配色や書体を作らず、pptx-review の設計値抽出スクリプトで実測して写す（`references/design-lock.md` 7節）。既存デッキにページを足す作業は pptx-edit の担当。
 
@@ -67,7 +67,9 @@ for name in ("pptx", "lxml", "PIL", "xlsxwriter"):
 
 ### 3. デザインロック（`deck/design-lock.md` と `deck/design-lock.json`）
 
-まず `references/design-principles.md` の1〜5節（主題から導く、不均等に投資する、リズム、層の分離、シグネチャ）を読み、このデッキの方向を決める。そのうえで `references/design-lock.md` の雛形で、パレット・書体・型スケール・グリッド・シグネチャ・レイアウト名簿を確定する。
+まず `references/design-principles.md` の1〜5節（主題から導く、不均等に投資する、リズム、層の分離、シグネチャ）を読み、このデッキの方向を決める。そのうえで `references/design-lock.md` の雛形で、パレット・書体・型スケール・グリッド・シグネチャ・レイアウト名簿を確定する。`design-lock.json` の `palette` は `bg`、`text`、`muted`、`line`、`panel`、`primary`、`accent` の役割名つきで書き、生成骨格はこの値を直接読む。骨格へ色を直書きしない。
+
+**高度デザインでは `references/palette-automation.md` を読み、`scripts/generate_palette.py` を使う。** 主題・ブランド・参考画像から基準色を1つ定め、3候補と比較用PPTXを自動生成し、描画確認した候補をdesign-lockへ固定する。既存テンプレがある場合は自動生成せず、その配色を抽出して使う。
 
 **シグネチャは主題から作る。** 既製の装飾（色帯・飾り線・アイコン入りの丸・角丸カードの反復）を選ぶのはロックではない。4条件（主題由来／1つの形に1つの意味／初出で凡例／静かな標識・幾何そのものの1枚・凡例の3層）を design-lock に書き切る。書けないなら、まだ署名が無い。書体は `references/typography-ja.md`、原型は `references/layout-catalog.md`。ロック前に `references/anti-ai-checklist.md` の視覚項目で点検する。
 

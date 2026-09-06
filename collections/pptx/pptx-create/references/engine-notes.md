@@ -26,6 +26,7 @@
 ```python
 import json
 import math
+import re
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -38,10 +39,25 @@ from lxml import etree
 
 LOCK = json.load(open("deck/design-lock.json", encoding="utf-8"))
 FONT = LOCK["fonts"][0]
-C = {  # design-lock.md の役割名 → HEX
-    "bg": "FFFFFF", "text": "1A1A1A", "muted": "5C5C5C",
-    "line": "D9D9D6", "panel": "F4F4F2", "primary": "22313F", "accent": "B7282E",
-}
+PALETTE_ROLES = ("bg", "text", "muted", "line", "panel", "primary", "accent")
+raw_palette = LOCK.get("palette")
+if raw_palette is None:  # 1.2以前のlock。colorsは上記の役割順で読む
+    legacy_colors = LOCK.get("colors", [])
+    if len(legacy_colors) < len(PALETTE_ROLES):
+        raise ValueError("design-lock.json に役割付き palette が無い")
+    raw_palette = dict(zip(PALETTE_ROLES, legacy_colors[:len(PALETTE_ROLES)]))
+elif not isinstance(LOCK.get("palette_basis"), str) or not LOCK["palette_basis"].strip():
+    raise ValueError("役割付き palette には主題から導いた palette_basis が必要")
+if not isinstance(raw_palette, dict) or any(role not in raw_palette for role in PALETTE_ROLES):
+    raise ValueError("palette は bg/text/muted/line/panel/primary/accent をすべて持つ")
+C = {role: str(raw_palette[role]).upper().lstrip("#") for role in PALETTE_ROLES}
+if any(not re.fullmatch(r"[0-9A-F]{6}", color) for color in C.values()):
+    raise ValueError("palette の色は6桁HEXで書く")
+CHART_SERIES = [str(color).upper().lstrip("#") for color in
+                LOCK.get("chart_series", [C["primary"], C["accent"], C["muted"], C["line"]])]
+if not CHART_SERIES or any(not re.fullmatch(r"[0-9A-F]{6}", color)
+                           for color in CHART_SERIES):
+    raise ValueError("chart_series は6桁HEXの配列で書く")
 W, H = 13.333, 7.5
 M = 0.6                     # 余白
 COL_W = (W - 2 * M - 0.25 * 11) / 12
@@ -361,18 +377,20 @@ def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0"):
         ca.format.line.color.rgb = RGBColor.from_string(C["line"])
         if any(v < 0 for _, values in series for v in values):
             ca.tick_label_position = XL_TICK_LABEL_POSITION.LOW   # 負の棒に項目名が重ならない
-    palette = ["primary", "accent", "muted", "line"]
     for i, ser in enumerate(plot.series):
         if circular:                        # 円は区分ごとに色を変える
             for j, point in enumerate(ser.points):
                 point.format.fill.solid()
-                point.format.fill.fore_color.rgb = RGBColor.from_string(C[palette[j % len(palette)]])
+                point.format.fill.fore_color.rgb = RGBColor.from_string(
+                    CHART_SERIES[j % len(CHART_SERIES)])
         elif kind in ("line", "area"):
-            ser.format.line.color.rgb = RGBColor.from_string(C["primary" if i == 0 else "line"])
+            ser.format.line.color.rgb = RGBColor.from_string(
+                CHART_SERIES[i % len(CHART_SERIES)])
             ser.format.line.width = Pt(2.5)
         else:
             ser.format.fill.solid()
-            ser.format.fill.fore_color.rgb = RGBColor.from_string(C["primary" if i == 0 else "line"])
+            ser.format.fill.fore_color.rgb = RGBColor.from_string(
+                CHART_SERIES[i % len(CHART_SERIES)])
         if kind in ("bar", "bar_h", "bar_stacked"):
             inv = etree.SubElement(ser._element, qn("c:invertIfNegative")); inv.set("val", "0")
             ser._element.find(qn("c:cat")).addprevious(inv)       # 無いと PowerPoint 以外のビューアで負の棒が上向きに出ることがある

@@ -4,7 +4,7 @@ description: "PowerPoint（.pptx）を変更せずに監査し、はみ出し・
 license: MIT
 compatibility: "Python 3.9+。lint と設計値抽出は標準ライブラリのみ、簡易描画は Pillow。和文の書体ファイルがあれば字形まで描く。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に併用する。"
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   publisher: "agent-skills"
   bundle: pptx-suite
 ---
@@ -23,7 +23,7 @@ metadata:
 
 - 対象の `.pptx`（必須）
 - 密度モード: 講演型（`talk`）か資料型（`doc`）。不明なら `doc`
-- あれば `design-lock.json`（書体・色・最小サイズ）と `outline.md`（意図した構成）
+- あれば `design-lock.json`（書体・役割付きpalette・追加許可色・最小サイズ）と `outline.md`（意図した構成）
 - 監査の観点の指定（例: 「AIっぽさだけ」「はみ出しだけ」）。無ければ全項目
 
 ## 手順

@@ -102,21 +102,27 @@ def check_guardrails(consts, _scales):
 def check_flags():
     """このコレクションのスクリプトに渡しているフラグが実在するかを見る。
     外部コマンド（描画に使う実行ファイルなど）のフラグは対象外。"""
-    scripts = ("pptx_lint.py", "render_preview.py", "extract_style.py")
+    script_paths = {
+        "pptx_lint.py": REVIEW / "scripts" / "pptx_lint.py",
+        "render_preview.py": REVIEW / "scripts" / "render_preview.py",
+        "extract_style.py": REVIEW / "scripts" / "extract_style.py",
+        "generate_palette.py": ROOT / "pptx-create" / "scripts" / "generate_palette.py",
+    }
     every = {"--help"}
-    for script in scripts:
-        out = subprocess.run([sys.executable, str(REVIEW / "scripts" / script), "--help"],
+    for script, path in script_paths.items():
+        out = subprocess.run([sys.executable, str(path), "--help"],
                              capture_output=True, text=True).stdout
         every |= set(re.findall(r"(--[a-z-]+)", out))
     docs = [CREATE / "qa.md", REVIEW / "SKILL.md", ROOT / "pptx-edit" / "SKILL.md",
             ROOT / "pptx-edit" / "references" / "match-existing-design.md",
             CREATE / "engine-notes.md", CREATE / "typography-ja.md",
+            CREATE / "palette-automation.md",
             ROOT / "pptx-create" / "SKILL.md"]
     for doc in docs:
         text = doc.read_text()
         used = set()
         for block in re.findall(r"```(?:python|bash)?\n(.*?)```", text, re.S):
-            if not any(name in block for name in scripts):
+            if not any(name in block for name in script_paths):
                 continue                                  # 外部コマンドだけの塊は見ない
             used |= set(re.findall(r'"(--[a-z-]+)"', block))
         used |= set("--" + x for x in re.findall(r"`--([a-z-]+)`", text))
@@ -135,7 +141,7 @@ def check_lock_roundtrip(sample):
             note("extract_style がロックを書き出せない")
             return
         data = json.load(open(lock, encoding="utf-8"))
-        for key in ("fonts", "colors", "min_font_pt", "allow"):
+        for key in ("fonts", "palette_basis", "palette", "colors", "min_font_pt", "allow"):
             if key not in data:
                 note("extract_style の出力に %s が無い（lint の --lock が期待する）" % key)
         r = subprocess.run([sys.executable, str(REVIEW / "scripts" / "pptx_lint.py"), sample,
