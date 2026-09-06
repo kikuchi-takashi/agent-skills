@@ -1547,6 +1547,14 @@ def load_lock(path):
         lock["colors"] = allowed_colors
     if isinstance(data.get("min_font_pt"), (int, float)):
         lock["min_font_pt"] = float(data["min_font_pt"])
+    grammar = data.get("grammar")
+    if isinstance(grammar, dict):
+        escalate = grammar.get("escalate")
+        if escalate is not None:
+            if not isinstance(escalate, list) or any(not isinstance(c, str) for c in escalate):
+                raise ValueError("grammar.escalate は指摘コードの配列で書く")
+            lock["escalate"] = [c.strip() for c in escalate if c.strip()]
+        lock["grammar_id"] = str(grammar.get("id", "")).strip()
     if isinstance(data.get("allow"), list):
         lock["allow"] = []
         for entry in data["allow"]:
@@ -1558,6 +1566,27 @@ def load_lock(path):
                 )
             lock["allow"].append(entry)
     return lock
+
+
+def apply_escalate(report_slides, deck_findings, codes, grammar_id):
+    """デッキの文法が禁じている手を、軽微から重要に上げる。
+
+    allow の逆。allow は「このデッキでは意図的だから咎めない」、escalate は
+    「このデッキの文法では、これは軽微では済まない」。文法ごとに何が禁じ手かは
+    違うので、コードそのものを増やさずに重大度だけを動かす。
+    """
+    if not codes:
+        return 0
+    wanted, count = set(codes), 0
+    label = "文法 %s の禁じ手" % grammar_id if grammar_id else "デッキの文法の禁じ手"
+    for f in [f for s in report_slides for f in s["findings"]] + deck_findings:
+        if f["code"] not in wanted or f.get("allowed"):
+            continue
+        if f["severity"] in ("info", "warning"):
+            f["severity"] = "error" if f["severity"] == "warning" else "warning"
+            f["escalated"] = label
+            count += 1
+    return count
 
 
 def apply_allow(report_slides, deck_findings, allow):
@@ -1698,6 +1727,8 @@ def main(argv=None):
                 f["baseline"] = True
                 inherited += 1
 
+    escalated = apply_escalate(report_slides, deck_findings,
+                               lock.get("escalate", []), lock.get("grammar_id", ""))
     allowed = apply_allow(report_slides, deck_findings, lock.get("allow", []))
 
     def skip(f):

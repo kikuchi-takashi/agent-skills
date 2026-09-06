@@ -775,6 +775,110 @@ def main():
         failures += 1
         print("NG  線を消した図形に描画が枠を足さない（ある線は描く）")
 
+    # 構成の検査: 生成する前に、書いたか／選んだかを機械で見る。
+    check_outline = ROOT / "pptx-create" / "scripts" / "check_outline.py"
+    good = {"pages": [
+        {"n": 1, "role": "表紙", "title": "拠点再編の提案", "archetype": "cover", "density": "low"},
+        {"n": 2, "role": "結論", "title": "西日本の遅延は在庫の偏りが原因である",
+         "archetype": "claim-evidence", "exhibit": "chart:bar", "evidence": "社内WMS",
+         "density": "high", "candidates": ["claim-evidence", "comparison"],
+         "chosen_because": "軸が1つなので棒"},
+        {"n": 3, "role": "行動", "title": "10月から棚卸しに着手したい", "archetype": "closing",
+         "density": "mid", "candidates": ["closing", "steps"], "chosen_because": "順序が無い"}]}
+    bad = {"pages": [
+        {"n": 1, "role": "本文", "title": "まとめ", "archetype": "claim-evidence",
+         "exhibit": "38.2%の削減", "density": "high",
+         "candidates": ["claim-evidence"], "chosen_because": ""},
+        {"n": 2, "role": "本文", "title": "二つ目の主張を一文で書いた行",
+         "archetype": "bento-grid", "density": "high",
+         "candidates": ["a", "b"], "chosen_because": "見栄えがよい"},
+        {"n": 3, "role": "本文", "title": "三つ目の主張を一文で書いた行",
+         "archetype": "comparison", "density": "high",
+         "candidates": ["comparison", "table"], "chosen_because": "軸が1つ"},
+        {"n": 4, "role": "本文", "title": "四つ目の主張を一文で書いた行",
+         "archetype": "table", "density": "high",
+         "candidates": ["table", "trend"], "chosen_because": "値を照合させる"}]}
+    grammar_lock = dict(LOCK, grammar={"id": "answer-led", "arc": ["結論", "証拠", "行動"],
+                                       "escalate": ["CARD_ROW"]})
+    paths = {}
+    for name, payload in (("good", good), ("bad", bad), ("glock", grammar_lock)):
+        paths[name] = os.path.join(workdir, name + ".json")
+        with open(paths[name], "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False)
+    r_good = subprocess.run([sys.executable, str(check_outline), paths["good"],
+                             "--lock", paths["glock"]], capture_output=True, text=True)
+    r_bad = subprocess.run([sys.executable, str(check_outline), paths["bad"],
+                            "--lock", paths["glock"]], capture_output=True, text=True)
+    bad_out = r_bad.stdout + r_bad.stderr
+    outline_ok = (
+        r_good.returncode == 0
+        and r_bad.returncode == 1
+        and "話題ラベル" in bad_out           # まとめ
+        and "候補が 1 個" in bad_out          # 候補が足りない
+        and "決め手が空" in bad_out           # 理由が無い
+        and "骨格に無い" in bad_out           # bento-grid
+        and "密度が全ページ" in bad_out       # 密度が一様
+        and "文法 answer-led" in bad_out      # 読みの筋が結論から始まっていない
+    )
+    if outline_ok:
+        ok += 1
+        print("ok  構成の欠落を生成前に拾う")
+    else:
+        failures += 1
+        print("NG  構成の欠落を生成前に拾う（good=%d bad=%d）" % (r_good.returncode, r_bad.returncode))
+
+    # 文法の禁じ手は重大度が上がる（allow の逆）。
+    esc_prs = scope["new_deck"]()
+    for i in range(5):
+        sl = scope["blank"](esc_prs)
+        scope["page_title"](sl, "揃ったページ %d の主張を一文で書いたタイトル" % (i + 1))
+        scope["text"](sl, scope["M"], scope["BODY_Y"], 7.0, 1.4, ["本文の行。"], scope["SIZE"]["body"])
+    card = scope["blank"](esc_prs)
+    scope["page_title"](card, "同型のカードを3枚横に並べたページの主張")
+    for i in range(3):
+        scope["box_text"](card, scope["M"] + i * 4.15, scope["BODY_Y"], 3.8, 1.6,
+                          "項目 %d" % (i + 1), fill="panel", rounded=True)
+    esc_path = os.path.join(workdir, "escalate.pptx")
+    esc_prs.save(esc_path)
+    sev = {}
+    for tag, lock_path in (("plain", None), ("grammar", paths["glock"])):
+        out = os.path.join(workdir, "esc-%s.json" % tag)
+        cmd = [sys.executable, str(LINT), esc_path, "--json-out", out]
+        if lock_path:
+            cmd += ["--lock", lock_path]
+        subprocess.run(cmd, capture_output=True)
+        report = json.load(open(out, encoding="utf-8"))
+        sev[tag] = [f["severity"] for s_ in report["slides"] for f in s_["findings"]
+                    if f["code"] == "CARD_ROW"]
+    escalate_ok = sev.get("plain") == ["info"] and sev.get("grammar") == ["warning"]
+    if escalate_ok:
+        ok += 1
+        print("ok  文法の禁じ手は重大度が上がる")
+    else:
+        failures += 1
+        print("NG  文法の禁じ手は重大度が上がる（%s）" % sev)
+
+    # 署名の候補: 当たれば出し、弱ければ何も出さない（無理に当てはめない）。
+    motif = ROOT / "pptx-design" / "scripts" / "suggest_motif.py"
+    hit = subprocess.run([sys.executable, str(motif), "--json",
+                          "夜間物流の管制画面。遅延を検知して運用で捌く"],
+                         capture_output=True, text=True)
+    miss = subprocess.run([sys.executable, str(motif), "--json", "新しい人事制度の説明"],
+                          capture_output=True, text=True)
+    try:
+        hit_names = [c["name"] for c in json.loads(hit.stdout)["candidates"]]
+        miss_names = [c["name"] for c in json.loads(miss.stdout)["candidates"]]
+        motif_ok = (hit.returncode == 0 and "計器" in hit_names
+                    and miss.returncode == 1 and miss_names == [])
+    except (ValueError, KeyError):
+        motif_ok = False
+    if motif_ok:
+        ok += 1
+        print("ok  署名の候補は当たれば出し、弱ければ出さない")
+    else:
+        failures += 1
+        print("NG  署名の候補は当たれば出し、弱ければ出さない")
+
     # フッター行の3つの持ち場は重ならない（出典・章名/付録の印・ページ番号）。
     foot = scope["FOOT"]
     if (foot["source"][0] + foot["source"][1] <= foot["section"][0] + 1e-6

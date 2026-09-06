@@ -63,6 +63,17 @@ for name in ("pptx", "lxml", "PIL", "xlsxwriter"):
 
 **展示物は、候補を2つ以上出してから選ぶ。** `pptx-design` の `references/design-principles.md` 7節の手順で、まず内容の形（流れる・詰まる・積み上がる・対になる…）を言葉にし、そこから候補を2〜3個出し、決め手で選ぶ。各行に一行残す——**「候補: A / B。選: A。理由: 〜」**。理由が書けないページは、まだ形式を選んでいない。最初に当てはまった形をそのまま採ると、デッキ全体が同じ形の繰り返しになる。
 
+構成は `deck/outline.json` を正として書き、`outline.md` はそこから起こす。**書いたかを機械で確かめる。**
+
+```python
+import subprocess, sys
+subprocess.run([sys.executable, "<skills>/pptx-create/scripts/check_outline.py",
+                "deck/outline.json", "--lock", "deck/design-lock.json"], check=True)
+```
+
+話題ラベルのタイトル、候補が1つしかない選択、決め手の空欄、出典の無い数字、骨格に無い原型、
+全ページ同じ密度を拾う。**ここで落ちたまま生成に進まない。** 生成してから直すのは遅い。
+
 10枚を超える、または内容が複雑なら、この段階で利用者に構成を見せて確認を取る。
 
 ### 3. デザインロックの受け取り（`deck/design-lock.json`）
