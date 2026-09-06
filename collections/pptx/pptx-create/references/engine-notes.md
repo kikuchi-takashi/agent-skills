@@ -108,11 +108,52 @@ def text_width(text, size):
     return sum(size if unicodedata.east_asian_width(c) in ("W", "F") else size * 0.55 for c in text)
 
 
+# 禁則処理の文字クラス（JIS X 4051）。行頭に置けない文字と、行末に置けない文字。
+# pptx-review の pptx_lint.py と同じ定義を持つ（片方だけ変えない）。
+KINSOKU_HEAD = ("、。，．・：；？！゛゜ヽヾゝゞ々ー"
+                "）〕］｝〉》」』】〙〗〟’”｠»"
+                ")]}"
+                "ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ"
+                "‐゠–〜?!‼⁇⁈⁉")
+KINSOKU_TAIL = "（〔［｛〈《「『【〘〖〝‘“｟«([{"
+
+
 def wrapped_lines(lines, w, size):
-    """幅 w（inch）に置いたときの、折り返した後の行数。"""
+    """幅 w（inch）に置いたときの、折り返した後の行数。
+
+    **割り算で見積もらない。** 全幅÷行幅の切り上げは、行末に入りきらなかった
+    余りを数え落とすので、実際より少なく出る（実測: 現実的な和文で 5/55 の
+    組み合わせが1行不足した）。1行ずれると、下に積んだものと重なる。
+
+    禁則も数える。**追い出しで数える**——行頭に置けない文字がそこに来るときは、
+    直前の文字ごと次の行へ送る。ぶら下げ（行末に押し込む）は PowerPoint の
+    既定では働かないので当てにしない。追い出しは行が増える側なので、
+    見積りとしても安全側に倒れる。
+    """
     rows = lines if isinstance(lines, list) else [lines]
     inner = max(w, 0.1) * 72.0
-    return sum(max(1, int(math.ceil(text_width(row, size) / inner))) for row in rows)
+    total = 0
+    for row in rows:
+        if not row:
+            total += 1
+            continue
+        count, used, prev = 1, 0.0, ""
+        for ch in row:
+            cw_ = text_width(ch, size)
+            if used and used + cw_ > inner:
+                # 行頭に置けない文字、または直前が行末に置けない文字なら、
+                # 直前の1文字ごと次の行へ送る（追い出し）
+                if (ch in KINSOKU_HEAD or prev in KINSOKU_TAIL) and used > text_width(prev, size):
+                    count += 1
+                    used = text_width(prev, size) + cw_
+                else:
+                    count += 1
+                    used = cw_
+            else:
+                used += cw_
+            prev = ch
+        total += count
+    return total
 
 
 def block_height(lines, w, size, slack_lines=0.35):
@@ -1136,6 +1177,7 @@ if __name__ == "__main__":
 - **面（カード）は既定ではない。** `box_text()` と `rect()` の `fill` の既定は `None`（面なし）。内容に順序・量・関係・時間・二軸のどれかがあるなら、面で囲むより別の形式のほうがほぼ常に強い。角丸の面を並べてよいのは、項目が並列・無順序・等重みのときだけ。
 - **`MODE` は最初に決める。** 講演型と資料型でサイズが違う。途中で変えると型スケールが混ざる。lint の `--mode` にも同じ値を渡す。
 - **行送りは倍率で書かない。** `line_spacing = 1.4` は `<a:lnSpc><a:spcPct val="140000"/>` になり、見る側は「書体の行高 × 1.4」で描く。書体の行高は文字サイズの 1.2〜1.5 倍あり、和文書体ほど大きい。つまり同じ数字が環境ごとに違う高さになり、こちらの計算とも合わない。骨格は `Pt(size * LINE)`（`spcPts`）で**実寸**を書き出す。この一点で、手元では収まって受け手の環境では溢れる、という崩れ方がほぼ消える。
+- **行数を割り算で見積もらない。** 全幅÷行幅の切り上げは、行末に入りきらなかった余りを数え落とし、実際より少なく出る。和文は語の途中で折れないので毎行余りが出る。`wrapped_lines()` は1文字ずつ実際に折り返し、禁則（JIS X 4051）を追い出しで数える。lint の `wrap_count()` と同じ定義で、ずれていないことを整合監査が確かめる。
 - **箱の高さは測って決める。`block_height(lines, w, size)` を使う。** 折り返し後の行数を数え、段落の後ろのアキ（`PARA_GAP`）も足す。`text_height(len(rows), size)` は**段落数**しか数えないので、1行が2行に折れたぶんと、段落が増えたぶんのアキが足りなくなる。2行までは収まり3行目で溢れる、という崩れ方はここから来る。
 - **箱を動かせるなら `place()`、動かせないなら `fit_text()`。** `place()` は文言から高さを測って置き、下端を超えるなら例外を出す。`fit_text()` は 2×2 の升目のように寸法が先に決まっている場所で、**型スケールの段**（1ptずつではない）でサイズを下げ、下限でも入らなければ例外を出す。どちらも黙って溢れさせない。
 - **升目の数と中身の数が合わないときは `expect_count()` で止める。** `zip` は余りを黙って捨てる。原型が4行しか持たないところに5つ渡すと、5つ目が消えたデッキが何事もなく出来上がる。

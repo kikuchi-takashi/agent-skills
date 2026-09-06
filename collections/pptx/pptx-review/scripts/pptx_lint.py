@@ -401,6 +401,41 @@ def fill_hex(el):
     return clr.get("val").upper() if clr is not None and clr.get("val") else None
 
 
+# 禁則処理の文字クラス（JIS X 4051）。pptx-create の骨格と同じ定義を持つ。
+KINSOKU_HEAD = ("、。，．・：；？！゛゜ヽヾゝゞ々ー"
+                "）〕］｝〉》」』】〙〗〟’”｠»"
+                ")]}"
+                "ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ"
+                "‐゠–〜?!‼⁇⁈⁉")
+KINSOKU_TAIL = "（〔［｛〈《「『【〘〖〝‘“｟«([{"
+
+
+def wrap_count(text, inner_pt, size):
+    """幅 inner_pt（pt）に置いたときの行数。**割り算で見積もらない。**
+
+    全幅÷行幅の切り上げは、行末に入りきらなかった余りを数え落として実際より
+    少なく出る。描画（render_preview.py）は1文字ずつ実際に折り返すので、
+    割り算のままだと lint と描画が食い違う。禁則は追い出しで数える。
+    """
+    if not text:
+        return 1
+    count, used, prev = 1, 0.0, ""
+    for ch in text:
+        cw = MEASURER.width(ch, size)
+        if used and used + cw > inner_pt:
+            prev_w = MEASURER.width(prev, size) if prev else 0.0
+            if (ch in KINSOKU_HEAD or prev in KINSOKU_TAIL) and used > prev_w:
+                count += 1
+                used = prev_w + cw
+            else:
+                count += 1
+                used = cw
+        else:
+            used += cw
+        prev = ch
+    return count
+
+
 def luminance(hex6):
     """0（黒）〜1（白）。濃い面かどうかの判定に使う（ガンマ補正なしの簡易版）。"""
     try:
@@ -809,8 +844,7 @@ def estimate_overflow(shape):
         else:
             lines = 0
             for segment in text.split("\n"):
-                width = MEASURER.width(segment, size)
-                lines += max(1, int(math.ceil(width / inner_w))) if segment else 1
+                lines += wrap_count(segment, inner_w, size)
         needed += lines * line_height(para, size) + para["before"] + (para["after"] if idx < last else 0.0)
     if needed <= 0:
         return None

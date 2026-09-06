@@ -188,6 +188,37 @@ def check_bundle():
             note("%s が metadata.bundle: pptx-suite を宣言していない" % skill)
 
 
+def check_kinsoku():
+    """禁則の文字クラスが、骨格と lint で一致しているか。
+
+    片方だけ増やすと、生成が想定した行数と検査が数える行数がずれ、
+    「lint は通るのに描画で溢れる」が戻ってくる。
+    """
+    import ast
+
+    def constants(src):
+        """定数の値を構文木から読む。正規表現だと隣の定数まで拾ってしまう。"""
+        found = {}
+        for node in ast.parse(src).body:
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if isinstance(target, ast.Name) and target.id.startswith("KINSOKU_"):
+                try:
+                    found[target.id] = ast.literal_eval(node.value)
+                except ValueError:
+                    pass
+        return found
+
+    skeleton_consts = constants(SKELETON)
+    lint_consts = constants((REVIEW / "scripts" / "pptx_lint.py").read_text())
+    for name in ("KINSOKU_HEAD", "KINSOKU_TAIL"):
+        if name not in skeleton_consts or name not in lint_consts:
+            note("%s が骨格か lint に無い" % name)
+        elif skeleton_consts[name] != lint_consts[name]:
+            note("%s が骨格と lint で違う" % name)
+
+
 def check_cross_references():
     """文書が名前で挙げる参照文書が実在するか。
 
@@ -258,6 +289,7 @@ def main():
     check_chart_kinds()
     check_components()
     check_bundle()
+    check_kinsoku()
     check_cross_references()
     check_lock_roundtrip(sample)
     print("=== 文書と実装の整合監査 ===")

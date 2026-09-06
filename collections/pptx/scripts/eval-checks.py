@@ -10,6 +10,7 @@ python-pptx が必要。lint 自体は標準ライブラリだけで動く。
 """
 
 import json
+import math
 import os
 import pathlib
 import re
@@ -826,6 +827,38 @@ def main():
     else:
         failures += 1
         print("NG  構成の欠落を生成前に拾う（good=%d bad=%d）" % (r_good.returncode, r_bad.returncode))
+
+    # 折り返しの数え方: 骨格・lint・描画の三者が同じ行数を出す。
+    # 割り算（全幅÷行幅）は行末の余りを数え落とし、実際より少なく出る。
+    scope = env(workdir)
+    wrap_ok = True
+    detail = []
+    try:
+        import importlib
+        sys.path.insert(0, str(ROOT / "pptx-review" / "scripts"))
+        lint_mod = importlib.import_module("pptx_lint")
+        importlib.reload(lint_mod)
+        for text, w, size in (
+                ("「基準を変える」という判断には、営業部門の合意が要る。合意が取れない場合、効果は半減する。", 2.5, 16),
+                ("季節品の入れ替え時期に旧品の引き取り先が決まらないまま新品が入ってくるため、在庫は増える。", 5.0, 16),
+                ("在庫の滞留は拠点ごとの判断基準の違いから生まれており、輸送能力の不足では説明できない。", 3.3, 16)):
+            plain = max(1, int(math.ceil(scope["text_width"](text, size) / (w * 72.0))))
+            skeleton_n = scope["wrapped_lines"](text, w, size)
+            lint_n = lint_mod.wrap_count(text, w * 72.0, size)
+            detail.append((plain, skeleton_n, lint_n))
+            if skeleton_n != lint_n or skeleton_n <= plain:
+                wrap_ok = False
+        # 禁則: 行頭に置けない文字は追い出す（行が増える側）
+        if scope["wrapped_lines"]("あああああ、", 1.0, 72) < 2:
+            wrap_ok = False
+    except Exception:
+        wrap_ok = False
+    if wrap_ok:
+        ok += 1
+        print("ok  折り返しは実際に数え、骨格と lint が一致する")
+    else:
+        failures += 1
+        print("NG  折り返しは実際に数え、骨格と lint が一致する（%s）" % detail)
 
     # 文法の禁じ手は重大度が上がる（allow の逆）。
     esc_prs = scope["new_deck"]()
