@@ -353,6 +353,66 @@ def _(g, p):
                kind="bar_stacked_100", fmt="0")
 
 
+@case("大きな文字の泣き別れを咎める", expect=["BIG_TEXT_ORPHAN_LINE"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["text"](s, 1.8, 2.6, g["W"] - 3.6, 2.0,
+              "在庫を動かさずに便を増やしても、遅延は減らない", 32, bold=True)
+
+
+@case("一文ページは泣き別れない", forbid=["BIG_TEXT_ORPHAN_LINE"])
+def _(g, p):
+    base(g, p)
+    g["slide_statement"](p, "在庫を動かさずに便を増やしても、遅延は減らない")
+
+
+@case("引き出し線を飾り線と誤らない", forbid=["ACCENT_LINE_UNDER_TITLE"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "遅延件数は目標を4月から一度も下回っていない")
+    ex = (g["M"], 2.2, 8.2, 3.4)
+    g["chart"](s, ex[0], ex[1], ex[2], ex[3], ["4月", "5月", "6月"],
+               [("実績", (214, 231, 258))], alt="遅延件数の推移")
+    g["annotate"](s, ex, (7.6, 2.6), "8月は目標を21%超えた")
+
+
+@case("時系列の背骨を飾り罫と誤らない", forbid=["FULL_WIDTH_RULE", "MISALIGNED"])
+def _(g, p):
+    base(g, p)
+    g["slide_roadmap"](p, "10月から4段階で進める",
+                       [("10月", "棚卸し"), ("12月", "基準を作り直す"),
+                        ("2月", "中国・九州へ展開"), ("3月", "全社基準に反映")],
+                       ["各段階の終わりに効果を測る。"], "出典: 計画")
+
+
+@case("分解は揃え線を割らない", forbid=["MISALIGNED"])
+def _(g, p):
+    base(g, p)
+    g["slide_tree"](p, "遅延291件は、3つの要因に分解できる", "遅延 291件",
+                    [("在庫要因 183件", ["滞留による欠品 121件"]),
+                     ("輸送要因 70件", ["便の不足 44件"]),
+                     ("その他 38件", ["受注情報の遅れ 38件"])], "出典: WMS")
+
+
+@case("代替テキストは作る場所で渡せる", forbid=["ALT_TEXT_MISSING", "ALT_TEXT_USELESS"])
+def _(g, p):
+    import io
+    from PIL import Image
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "作る場所で代替テキストを渡したページの主張")
+    g["chart"](s, g["M"], g["BODY_Y"], 5.0, 2.6, ["A", "B"], [("件数", (3.0, 5.0))],
+               alt="AとBの件数。Bが多い")
+    buf = io.BytesIO()
+    Image.new("RGB", (600, 400), (120, 130, 140)).save(buf, "PNG")
+    buf.seek(0)
+    g["picture"](s, buf, 6.2, g["BODY_Y"], 3.0, 2.0, alt="近畿拠点の通路。仮置きの在庫が積まれている")
+    g["table"](s, g["M"], 5.2, 5.0, [["拠点", "件数"], ["近畿", "88"]],
+               alt="拠点別の遅延件数の表")
+
+
 @case("複合・軌跡・バブル・印無し折れ線・横向き内訳",
       forbid=["TEXT_OVERFLOW_LIKELY", "CHART_NEGATIVE_RENDER"])
 def _(g, p):
@@ -1073,6 +1133,28 @@ def main():
     else:
         failures += 1
         print("NG  折り返しは実際に数え、骨格と lint が一致する（%s）" % detail)
+
+    # 複合図表がデザインロックのパレットを使う。色付けの前に組み替えると、
+    # テーマの既定色（青と赤）のまま出る。
+    scope = env(workdir)
+    combo_prs = scope["new_deck"]()
+    combo_slide = scope["blank"](combo_prs)
+    scope["chart"](combo_slide, scope["M"], scope["BODY_Y"], 7.0, 3.0, ["4月", "5月", "6月"],
+                   [("実績", (214, 231, 258)), ("目標", (220, 220, 240))], kind="combo")
+    combo_path = os.path.join(workdir, "combo.pptx")
+    combo_prs.save(combo_path)
+    with zipfile.ZipFile(combo_path) as z:
+        chart_xml = "".join(z.read(n).decode("utf-8") for n in z.namelist()
+                            if n.startswith("ppt/charts/chart"))
+    used = set(re.findall(r'srgbClr val="([0-9A-F]{6})"', chart_xml))
+    combo_ok = ("4F81BD" not in used and "C0504D" not in used
+                and used & set(c.upper() for c in TEST_PALETTE.values()))
+    if combo_ok:
+        ok += 1
+        print("ok  複合図表がパレットの色を使う")
+    else:
+        failures += 1
+        print("NG  複合図表がパレットの色を使う（%s）" % sorted(used))
 
     # 描画がすべての図表を実際に描く（灰色の箱で逃げない）。
     # lint が通っても描けなければ、図の妥当性を目で確かめられない。

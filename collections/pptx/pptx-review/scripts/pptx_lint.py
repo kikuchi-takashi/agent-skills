@@ -1000,8 +1000,26 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes, theme=N
         thin_v = w <= 0.06 and h >= 0.8
         if thin_h and title_box is not None:
             tx, ty, tw, th = title_box
-            if ty + th - 0.15 <= y <= ty + th + 0.6 and w <= cw * 0.7:
+            # 引き出し線は飾りではない。**近くに文字があり、図表や画像に接している**
+            # 短い線は、何かを指している線として扱う（annotate() が引く線）。
+            near_text = any(overlap_area((x - 0.15, y - 0.35, w + 2.6, 0.7), t["box"]) > 0
+                            for t in text_shapes if t["box"] is not None and t is not title_shape)
+            touches_exhibit = any(
+                e["box"] is not None and e["box"][0] - 0.3 <= x + w and x <= e["box"][0] + e["box"][2] + 0.3
+                and e["box"][1] <= y <= e["box"][1] + e["box"][3]
+                for e in shapes if e["kind"] in ("chart", "picture", "table"))
+            if (ty + th - 0.15 <= y <= ty + th + 0.6 and w <= cw * 0.7
+                    and not (near_text and touches_exhibit)):
                 add("ACCENT_LINE_UNDER_TITLE", "warning", "タイトル直下の飾り線（生成AIらしさの典型）。余白か面で区切る", s)
+                continue
+        if thin_h and w >= cw * 0.85:
+            # 節目の印が乗っている線は、時系列の背骨であって飾りではない
+            riders = sum(1 for o in shapes
+                         if o is not s and o["box"] is not None and o["kind"] == "shape"
+                         and o["box"][2] <= 0.4 and o["box"][3] <= 0.4
+                         and x <= o["box"][0] <= x + w
+                         and y - 0.25 <= o["box"][1] <= y + 0.25)
+            if riders >= 2:
                 continue
         if s["filled"] and w >= cw * 0.95 and 0.03 <= h <= 1.5 and (y <= 0.15 or y + h >= ch - 0.15):
             add("COLOR_BAND", "warning", "スライド上端または下端に接した全幅の帯。装飾なら削除する", s)
@@ -1049,6 +1067,8 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes, theme=N
 
     # 整列のずれ（共有されている端から 0.03〜0.15in 外れた端）
     boxed = [s for s in shapes if s["box"] is not None and not (s["box"][2] >= cw * 0.95 and s["box"][3] >= ch * 0.95)]
+    # 髪の毛のように細い罫線は、上端を文字の上端に揃える意味が無い（時系列の背骨など）
+    boxed = [s for s in boxed if not (s["box"][3] <= 0.06 and s["box"][2] >= 1.0)]
     for axis, label in ((0, "左端"), (1, "上端")):
         values = [s["box"][axis] for s in boxed]
         for s in boxed:
@@ -1274,6 +1294,33 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes, theme=N
                         add("TITLE_ORPHAN_LINE", "warning",
                             "タイトルの最終行が全角%.0f文字分しかない（「%s」）。言い換えて行を整える" % (tail, line[:8]), title_shape)
                     break
+
+    # 大きな文字の泣き別れは、タイトル以外でも目に付く。一文だけのページの
+    # 主文はタイトル判定の帯（上30%）に入らないので、別に見る。
+    for t in text_shapes:
+        if t is title_shape or t["box"] is None:
+            continue
+        size = max((max(p_["sizes"]) for p_ in t["paragraphs"] if p_["sizes"]), default=0)
+        if size < 24:
+            continue
+        insets = body_insets(t["body_pr"])
+        inner_w = max(t["box"][2] - insets["l"] - insets["r"], 0.1) * 72.0
+        for para in t["paragraphs"]:
+            text = para["text"].strip()
+            if not text or MEASURER.width(text, size) <= inner_w:
+                continue
+            line, last = "", ""
+            for char in text:
+                if MEASURER.width(line + char, size) > inner_w and line:
+                    last, line = line, char
+                else:
+                    line += char
+            tail = fullwidth_len(line)
+            if last and tail < 3:
+                add("BIG_TEXT_ORPHAN_LINE", "warning",
+                    "%.0fpt の文の最終行が全角%.0f文字分しかない（「%s」）。言い換えるか箱を広げる"
+                    % (size, tail, line[:8]), t)
+            break
 
     if title_text:
         lowered = title_text.strip().lower().rstrip("。.")

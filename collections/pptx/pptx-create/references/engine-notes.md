@@ -259,7 +259,9 @@ def skeleton(kind, n=None):
                 "note": (M, BODY_END - 1.0, W - 2 * M, 1.0),
                 "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "statement":
-        return {"line": (1.8, 2.6, W - 3.6, 2.0)}
+        # 幅は本文領域と同じに取る。1.8in ずつ空けると 32pt で全角22字しか入らず、
+        # 23字の文が2字だけ next line に落ちる（実測でそうなった）
+        return {"line": (M, 2.6, W - 2 * M, 2.0)}
     if kind == "hero-number":
         left, right = split((5, 7))
         num_h = text_height(1, HERO_SIZE, slack_lines=0)
@@ -355,11 +357,13 @@ def skeleton(kind, n=None):
         root_h = head_h + 0.5
         # 根は上の中央。子は真下に並べる。**横に置くと結線が折れて重なり、
         # 箱のように見える**（実測でそうなった）
+        kids = spread(n, band_x, band_w, gap=0.3)
+        # 根の幅は子と同じにする。中央に置くだけだと左端が子とずれ、揃え線を割る
+        root_w = kids[0][1]
         return {"title": (M, TITLE_Y, W - 2 * M, TITLE_H),
-                "root": (band_x + (band_w - 3.6) / 2, band_y, 3.6, root_h),
-                "children": [(cx, band_y + root_h + 0.9, cw_,
-                              band_h - root_h - 1.3)
-                             for cx, cw_ in spread(n, band_x, band_w, gap=0.3)],
+                "root": (band_x + (band_w - root_w) / 2, band_y, root_w, root_h),
+                "children": [(cx, band_y + root_h + 0.9, cw_, band_h - root_h - 1.3)
+                             for cx, cw_ in kids],
                 "source": (FOOT["source"][0], FOOT_Y, FOOT["source"][1], 0.35)}
     if kind == "roster":                     # 体制: 人や組織を並べる。カードが正しい数少ない形
         n = n or 4
@@ -558,7 +562,7 @@ SCATTER_KINDS = ("scatter", "scatter_line")     # 点の (x, y) を渡す。カ�
 BUBBLE_KINDS = ("bubble",)                      # (x, y, 大きさ) を渡す
 
 
-def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0"):
+def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0", alt=None):
     """ネイティブ図表。kind は CHART_KINDS の名前。series は [(名前, 値の列), ...]。
 
     伝えたいことで選ぶ: 比較=bar、変化=line、割合=pie、項目名が長い=bar_h、
@@ -587,8 +591,11 @@ def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0"):
         data.categories = categories
         for name, values in series:
             data.add_series(name, values)
-    chart = slide.shapes.add_chart(CHART_KINDS[kind],
-                                   Inches(x), Inches(y), Inches(w), Inches(h), data).chart
+    frame = slide.shapes.add_chart(CHART_KINDS[kind],
+                                   Inches(x), Inches(y), Inches(w), Inches(h), data)
+    if alt:                                      # 作る場所で代替テキストを渡せるようにする。
+        describe(frame, alt)                     # 後から図形を探し直すと付け忘れる
+    chart = frame.chart
     chart.has_title = False
     chart.has_legend = len(series) > 1
     chart.font.name, chart.font.size = FONT, Pt(SIZE["note"])
@@ -631,9 +638,30 @@ def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0"):
         ca.format.line.color.rgb = RGBColor.from_string(C["line"])
         if any(v < 0 for _, values in series for v in values):
             ca.tick_label_position = XL_TICK_LABEL_POSITION.LOW   # 負の棒に項目名が重ならない
+    line_index = len(series) - 1 if kind == "combo" else None
+    for i, ser in enumerate(plot.series):
+        if circular:                        # 円は区分ごとに色を変える
+            for j, point in enumerate(ser.points):
+                point.format.fill.solid()
+                point.format.fill.fore_color.rgb = RGBColor.from_string(
+                    CHART_SERIES[j % len(CHART_SERIES)])
+        elif kind in ("line", "area") or i == line_index:
+            ser.format.line.color.rgb = RGBColor.from_string(
+                CHART_SERIES[i % len(CHART_SERIES)])
+            ser.format.line.width = Pt(2.5)
+        else:
+            ser.format.fill.solid()
+            ser.format.fill.fore_color.rgb = RGBColor.from_string(
+                CHART_SERIES[i % len(CHART_SERIES)])
+        if kind in ("bar", "bar_h", "bar_stacked"):
+            inv = etree.SubElement(ser._element, qn("c:invertIfNegative")); inv.set("val", "0")
+            ser._element.find(qn("c:cat")).addprevious(inv)       # 無いと PowerPoint 以外のビューアで負の棒が上向きに出ることがある
+
     if kind == "combo":
         # **最後の系列を折れ線にする。** 実績の棒に目標の線を重ねるときに使う。
         # python-pptx は複合を作れないので、系列を lineChart へ移す。
+        # **色を付けた後で移す**——先に移して return すると系列の色付けが飛び、
+        # テーマの既定色（青と赤）のまま出る（実測でそうなった）。
         # 軸は棒と共有する（別軸にすると軸 id の宣言が要り、書き損じると
         # PowerPoint がファイルごと拒否する）。単位が違う系列を混ぜない。
         area = chart._chartSpace.find(qn("c:chart")).find(qn("c:plotArea"))
@@ -650,25 +678,6 @@ def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0"):
             for ax in bar_el.findall(qn("c:axId")):
                 etree.SubElement(line_el, qn("c:axId")).set("val", ax.get("val"))
             bar_el.addnext(line_el)
-        return chart
-
-    for i, ser in enumerate(plot.series):
-        if circular:                        # 円は区分ごとに色を変える
-            for j, point in enumerate(ser.points):
-                point.format.fill.solid()
-                point.format.fill.fore_color.rgb = RGBColor.from_string(
-                    CHART_SERIES[j % len(CHART_SERIES)])
-        elif kind in ("line", "area"):
-            ser.format.line.color.rgb = RGBColor.from_string(
-                CHART_SERIES[i % len(CHART_SERIES)])
-            ser.format.line.width = Pt(2.5)
-        else:
-            ser.format.fill.solid()
-            ser.format.fill.fore_color.rgb = RGBColor.from_string(
-                CHART_SERIES[i % len(CHART_SERIES)])
-        if kind in ("bar", "bar_h", "bar_stacked"):
-            inv = etree.SubElement(ser._element, qn("c:invertIfNegative")); inv.set("val", "0")
-            ser._element.find(qn("c:cat")).addprevious(inv)       # 無いと PowerPoint 以外のビューアで負の棒が上向きに出ることがある
     return chart
 
 
@@ -677,7 +686,7 @@ def bar_chart(slide, x, y, w, h, categories, series, fmt="0.0"):
     return chart(slide, x, y, w, h, categories, series, kind="bar", fmt=fmt)
 
 
-def picture(slide, path, x, y, w, h, fit="cover", normalize=True):
+def picture(slide, path, x, y, w, h, fit="cover", normalize=True, alt=None):
     """枠に合わせて画像を置く。fit="cover" は枠を埋めて余りを切り落とし、
     "contain" は全体を見せて枠内に収める。縦横比は保つ。
 
@@ -704,6 +713,8 @@ def picture(slide, path, x, y, w, h, fit="cover", normalize=True):
             iw, ih = img.size
     box_ratio, img_ratio = w / h, iw / float(ih)
     pic = slide.shapes.add_picture(source, Inches(x), Inches(y), Inches(w), Inches(h))
+    if alt:
+        describe(pic, alt)
     if fit == "cover":                      # 枠を埋め、はみ出す側を切る
         if img_ratio > box_ratio:
             cut = (1 - box_ratio / img_ratio) / 2
@@ -815,7 +826,7 @@ def connect(slide, a, b, color="line", width_pt=1.5, arrow=True):
 
 # --- 部品（ページの中に置く。原型と組み合わせて使う） ---
 
-def table(slide, x, y, w, rows, col_ratio=None, row_h=0.45, right_align_from=1):
+def table(slide, x, y, w, rows, col_ratio=None, row_h=0.45, right_align_from=1, alt=None):
     """罫線は横だけ、見出し行は淡い面。数字の列は右揃え。
     rows は [[見出し...], [値...], ...]。6行×5列までに収める。
 
@@ -833,6 +844,8 @@ def table(slide, x, y, w, rows, col_ratio=None, row_h=0.45, right_align_from=1):
             for v, cw_ in zip(row, widths))))          # 0.16 は左右の内側余白
     frame = slide.shapes.add_table(n_rows, n_cols, Inches(x), Inches(y),
                                    Inches(w), Inches(sum(heights)))
+    if alt:
+        describe(frame, alt)
     tbl = frame.table
     tbl.first_row = False
     tbl.horz_banding = False
@@ -1486,7 +1499,8 @@ def slide_tree(prs, title, root, children, source=None):
     for (cx, cy, cw_, chh), (name, lines) in zip(k["children"], children):
         child = box_text(s, cx, cy, cw_, head_h + 0.4, name, SIZE["body"], bold=True)
         connect(s, root_shape, child)
-        fit_text(s, cx + 0.1, cy + head_h + 0.5, cw_ - 0.2, chh - head_h - 0.6,
+        # 左端は子の箱に揃える。0.1in ずらすと本文の揃え線から外れる（MISALIGNED）
+        fit_text(s, cx, cy + head_h + 0.5, cw_, chh - head_h - 0.6,
                  lines, SIZE["body"], color="muted")
     if source:
         page_source(s, source)
