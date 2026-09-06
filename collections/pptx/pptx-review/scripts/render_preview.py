@@ -134,6 +134,7 @@ class Renderer(object):
     # ---- スライド
     def render_slide(self, part, index):
         img = Image.new("RGB", (self.px(self.cw), self.px(self.ch)), self.background(part))
+        self._canvas = img                      # 半透明の面を、下に描かれた画素と混ぜるため
         draw = ImageDraw.Draw(img)
         layout = self.pkg.related(part, "/slideLayout")
         master = self.pkg.related(layout, "/slideMaster") if layout and layout in self.pkg.names else None
@@ -185,9 +186,11 @@ class Renderer(object):
         sp_pr = el.find(L.q("p", "spPr"))
         fill = line = None
         line_w = 1
+        self._fill_alpha = 1.0
         if sp_pr is not None:
             if sp_pr.find(L.q("a", "noFill")) is None:
                 fill = resolve(L.color_of(sp_pr), self.theme)
+                self._fill_alpha = L.fill_alpha(sp_pr)   # scrim は半透明。不透明で塗らない
             ln = sp_pr.find(L.q("a", "ln"))
             if ln is not None:
                 if ln.find(L.q("a", "noFill")) is None:
@@ -214,6 +217,10 @@ class Renderer(object):
         el = shape["el"]
         x, y, w, h = shape["box"]
         fill, line, line_w = self.fill_and_line(el)
+        alpha = getattr(self, "_fill_alpha", 1.0)
+        if fill is not None and alpha < 1.0:
+            fill = self.blend(draw, [self.px(x), self.px(y), self.px(x + w), self.px(y + h)],
+                              fill, alpha)
         if shape["placeholder"] and fill is None and line is None:
             return
         box = [self.px(x), self.px(y), self.px(x + w), self.px(y + h)]
@@ -242,6 +249,25 @@ class Renderer(object):
             # 図形にも枠が出て、コードから枠を消しても描画に残った。テーマ由来の
             # 線は fill_and_line() が lnRef から解決済みなので、補う必要はない。
             draw.rectangle(box, fill=fill, outline=line, width=line_w)
+
+    def blend(self, draw, box, color, alpha):
+        """半透明の面の見え方を、その下に既に描かれている画素と混ぜて求める。
+
+        画素ごとに混ぜず、箱の中の平均色と1回混ぜる。写真の上でも「どのくらい
+        薄まるか」は伝わり、地が一色なら厳密に正しい。
+        """
+        img = getattr(self, "_canvas", None)
+        if img is None:
+            return color
+        x0, y0, x1, y1 = (int(round(v)) for v in box)
+        x0, y0 = max(x0, 0), max(y0, 0)
+        x1, y1 = min(x1, img.width), min(y1, img.height)
+        if x1 <= x0 or y1 <= y0:
+            return color
+        region = img.crop((x0, y0, x1, y1)).resize((1, 1))
+        under = region.getpixel((0, 0))[:3]
+        return tuple(int(round((1 - alpha) * u + alpha * c)) for u, c in zip(under, color))
+
 
     def draw_connector(self, draw, shape):
         el = shape["el"]

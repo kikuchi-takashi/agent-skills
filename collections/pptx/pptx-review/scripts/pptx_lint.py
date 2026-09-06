@@ -13,6 +13,8 @@
   - 仮置き文言、空のプレースホルダ、全面画像、整列のずれ、角処理の混在
   - --baseline で以前のレポートを渡すと、元からあった指摘を除いて判定する
   - 死んだ空白（本文領域の被覆率）、文字と塗り面・画像の部分的な衝突
+  - 文字と地のコントラスト比（WCAG近似）。地が画像・グラデーション・半透明・
+    未解決の色のときは咎めず「未判定」に数える（measurement.contrast_unmeasured）
   - design-lock.json の allow に登録した指摘は「意図的」として判定から除く
   - Pillow と書体ファイルがあれば実フォントで折り返しを測る（無ければ概算）
 
@@ -400,12 +402,118 @@ def fill_hex(el):
 
 
 def luminance(hex6):
-    """0（黒）〜1（白）。濃い面かどうかの判定に使う。"""
+    """0（黒）〜1（白）。濃い面かどうかの判定に使う（ガンマ補正なしの簡易版）。"""
     try:
         r, g, b = (int(hex6[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
     except (TypeError, ValueError):
         return None
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def wcag_luminance(hex6):
+    """WCAG の相対輝度（ガンマ補正あり）。コントラスト比の計算専用。"""
+    try:
+        r, g, b = (int(hex6[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+    except (TypeError, ValueError):
+        return None
+
+    def channel(v):
+        return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def contrast_ratio(hex_a, hex_b):
+    """WCAG のコントラスト比 (1.0〜21.0)。どちらかが解決できなければ None。"""
+    la, lb = wcag_luminance(hex_a), wcag_luminance(hex_b)
+    if la is None or lb is None:
+        return None
+    hi, lo = (la, lb) if la >= lb else (lb, la)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+SCHEME_BG_ALIAS = {"bg1": "lt1", "tx1": "dk1", "bg2": "lt2", "tx2": "dk2"}
+
+
+def apply_color_mods(hex6, mods):
+    """schemeClr の lumMod/lumOff/tint/shade を6桁HEXに適用する（標準ライブラリのみ）。"""
+    r, g, b = (int(hex6[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+    if "shade" in mods:
+        f = mods["shade"]
+        r, g, b = r * f, g * f, b * f
+    if "tint" in mods:
+        f = mods["tint"]
+        r, g, b = 1 - (1 - r) * f, 1 - (1 - g) * f, 1 - (1 - b) * f
+    if "lumMod" in mods or "lumOff" in mods:
+        import colorsys
+        h, l, s = colorsys.rgb_to_hls(r, g, b)
+        l = l * mods.get("lumMod", 1.0) + mods.get("lumOff", 0.0)
+        r, g, b = colorsys.hls_to_rgb(h, max(0.0, min(1.0, l)), s)
+    return "".join("%02X" % round(max(0.0, min(1.0, c)) * 255) for c in (r, g, b))
+
+
+def resolve_fill_hex(color, theme):
+    """color_of() の戻り値 (('srgb', hex) か ('scheme', name, mods)) を6桁HEXに解決する。
+    テーマに無い名前や、テーマ自体が読めないデッキでは None（未判定として扱う）。"""
+    if color is None:
+        return None
+    if color[0] == "srgb":
+        return color[1]
+    name = SCHEME_BG_ALIAS.get(color[1], color[1])
+    base = theme.get(name)
+    if base is None:
+        return None
+    mods = color[2] if len(color) > 2 else {}
+    return apply_color_mods(base, mods)
+
+
+def shape_fill_color(el, theme):
+    """図形の塗りを (hex, reason) で返す。hex は 'solid' のときだけ非 None。
+    reason は none/gradient/pattern/picture/alpha/styleref/unresolved のいずれか。
+    alpha（半透明。scrim など）・グラデーション・パターン・画像塗り・テーマの
+    スタイル参照（fillStyleLst の色は解決しない）は、誤検出を避けるため常に
+    unresolved 側（コントラスト判定では「未判定」）に倒す。"""
+    sp_pr = el.find(q("p", "spPr"))
+    if sp_pr is None:
+        return None, "no-sppr"
+    if sp_pr.find(q("a", "noFill")) is not None:
+        return None, "none"
+    solid = sp_pr.find(q("a", "solidFill"))
+    if solid is not None:
+        srgb = solid.find(q("a", "srgbClr"))
+        scheme = solid.find(q("a", "schemeClr"))
+        node = srgb if srgb is not None else scheme
+        if node is not None and node.find(q("a", "alpha")) is not None:
+            return None, "alpha"
+        color = color_of(sp_pr)
+        if color is None:
+            return None, "unresolved"
+        hexval = resolve_fill_hex(color, theme)
+        return (hexval, "solid") if hexval else (None, "unresolved")
+    if sp_pr.find(q("a", "gradFill")) is not None:
+        return None, "gradient"
+    if sp_pr.find(q("a", "pattFill")) is not None:
+        return None, "pattern"
+    if sp_pr.find(q("a", "blipFill")) is not None:
+        return None, "picture"
+    style = el.find(q("p", "style"))
+    if style is not None:
+        ref = style.find(q("a", "fillRef"))
+        if ref is not None and ref.get("idx", "0") != "0":
+            return None, "styleref"
+    return None, "none"
+
+
+def slide_background_hex(pkg, part, theme):
+    """スライド自身の背景（p:bg）を6桁HEXで返す。無指定はテーマの lt1。
+    グラデーション・画像背景は解決できないので None（未判定）。"""
+    root = pkg.xml(part)
+    bg = root.find(".//" + q("p", "bg") + "/" + q("p", "bgPr"))
+    if bg is None:
+        return theme.get("lt1")
+    if bg.find(q("a", "solidFill")) is not None:
+        return resolve_fill_hex(color_of(bg), theme)
+    return None
 
 
 def body_insets(body_pr):
@@ -605,6 +713,25 @@ def apply_transform(box, transform):
     return (ox + (x - cx) * sx, oy + (y - cy) * sy, w * sx, h * sy)
 
 
+def fill_alpha(container):
+    """塗りの不透明度（0.0〜1.0）。`<a:srgbClr><a:alpha val="55000"/>` を読む。
+
+    color_of() は色だけを返し alpha を落とす。scrim（写真の上の薄い面）は
+    srgbClr に alpha を書くので、ここを見ないと不透明として扱ってしまう。
+    """
+    fill = container.find(q("a", "solidFill")) if container is not None else None
+    if fill is None:
+        return 1.0
+    for tag in ("srgbClr", "schemeClr"):
+        node = fill.find(q("a", tag))
+        if node is None:
+            continue
+        alpha = node.find(q("a", "alpha"))
+        if alpha is not None and alpha.get("val"):
+            return max(0.0, min(1.0, int(alpha.get("val")) / 100000.0))
+    return 1.0
+
+
 def slide_colors(pkg, part):
     root = pkg.xml(part)
     colors = Counter()
@@ -693,7 +820,7 @@ def estimate_overflow(shape):
     return needed / inner_h, confidence
 
 
-def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
+def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes, theme=None, bg_hex=None):
     cw, ch = canvas
     findings = []
     text_shapes = [s for s in shapes if s["text"] and s["box"] is not None]
@@ -915,6 +1042,78 @@ def lint_slide(index, shapes, canvas, args, lock, deck_state, has_notes):
             if inter / t_area > 0.05 and inter / t_area < 0.9:
                 add("TEXT_SHAPE_COLLISION", "warning", "テキスト「%s」が %s（%s）と部分的に重なっている" % (t["text"][:20], f["name"] or f["id"], f["kind"]), t)
                 break
+
+    # 文字と地のコントラスト。地は「その文字の箱をほぼ覆い、文字より背面にある
+    # 最後（＝最も手前）の塗り面・画像・図表・図形」とする。地が画像・図表・
+    # グラデーション・半透明（scrim など）・テーマのスタイル参照で、色を安全に
+    # 解決できないときは判定せず「未判定」に数える（誤検出を避ける側に倒す）。
+    # 文字色・地色のどちらかに明示指定が無いときも、継承元をたどらず未判定にする。
+    if theme is not None:
+        index_of = {id(s): i for i, s in enumerate(shapes)}
+        coverable = [s for s in shapes
+                     if s["box"] is not None and not s["text"]
+                     and s["kind"] in ("shape", "picture", "chart", "table")]
+        for t in text_shapes:
+            tw_, th_ = t["box"][2], t["box"][3]
+            t_area = tw_ * th_
+            if t_area <= 0:
+                continue
+            t_idx = index_of.get(id(t))
+            covering = None
+            for s in coverable:
+                if index_of.get(id(s), 0) >= t_idx:
+                    continue
+                if overlap_area(t["box"], s["box"]) / t_area >= 0.8:
+                    covering = s
+            ground_hex = None
+            if covering is None:
+                ground_hex = bg_hex
+            elif covering["kind"] in ("picture", "chart", "table"):
+                ground_hex = None
+            else:
+                ground_hex, _reason = shape_fill_color(covering["el"], theme)
+            if not ground_hex:
+                deck_state["contrast_unmeasured"] += 1
+                continue
+            worst_ratio = None
+            biggest_size = 0.0
+            has_bold_at_biggest = False
+            unresolved_text_color = False
+            for para in t["paragraphs"]:
+                for run in para["runs"]:
+                    if not run["text"].strip():
+                        continue
+                    color = run["color"]
+                    if color is None:
+                        unresolved_text_color = True
+                        continue
+                    text_hex = color[1] if color[0] == "srgb" else resolve_fill_hex(color, theme)
+                    if text_hex is None:
+                        unresolved_text_color = True
+                        continue
+                    ratio = contrast_ratio(text_hex, ground_hex)
+                    if ratio is None:
+                        unresolved_text_color = True
+                        continue
+                    size = run["size"] or (max(para["sizes"]) if para["sizes"] else 0.0)
+                    if worst_ratio is None or ratio < worst_ratio:
+                        worst_ratio = ratio
+                        biggest_size = size
+                        has_bold_at_biggest = run["bold"]
+                    elif ratio == worst_ratio and size > biggest_size:
+                        biggest_size = size
+                        has_bold_at_biggest = run["bold"]
+            if worst_ratio is None:
+                deck_state["contrast_unmeasured"] += 1
+                continue
+            large = biggest_size >= 18.0 or (biggest_size >= 14.0 and has_bold_at_biggest)
+            threshold = 3.0 if large else 4.5
+            if worst_ratio < threshold:
+                add("TEXT_CONTRAST_LOW", "warning",
+                    "文字と地のコントラスト比が %.2f:1（下限 %.1f:1、地は #%s）。文字色か地の色を離す"
+                    % (worst_ratio, threshold, ground_hex), t)
+            if unresolved_text_color:
+                deck_state["contrast_unmeasured"] += 1
 
     # 図形の中の文字: 書体とサイズが未指定だと、受け手の環境の既定になって崩れる
     for s in shapes:
@@ -1428,8 +1627,9 @@ def main(argv=None):
     MEASURER.__init__(font_path if (_ImageFont and font_path) else None)
     canvas = canvas_size(pkg)
     slides = slide_order(pkg)
+    theme = theme_colors(pkg)
     deck_state = {"fonts": set(), "signatures": [], "colors": Counter(), "records": [], "slide_colors": [],
-                  "variety": None, "decorations": []}
+                  "variety": None, "decorations": [], "contrast_unmeasured": 0}
     report_slides = []
     deck_findings = package_findings(pkg, slides)
     for index, part in enumerate(slides, start=1):
@@ -1451,7 +1651,9 @@ def main(argv=None):
         colors_here = slide_colors(pkg, part)
         deck_state["colors"].update(colors_here)
         deck_state["slide_colors"].append(slide_text_colors(shapes))
-        slide_report = lint_slide(index, shapes, canvas, args, lock, deck_state, notes_present(pkg, part))
+        bg_hex = slide_background_hex(pkg, part, theme)
+        slide_report = lint_slide(index, shapes, canvas, args, lock, deck_state, notes_present(pkg, part),
+                                  theme=theme, bg_hex=bg_hex)
         slide_report["part"] = part
         slide_report["findings"].extend(chart_findings(pkg, part))
         report_slides.append(slide_report)
@@ -1523,7 +1725,8 @@ def main(argv=None):
         "summary": {"errors": errors, "warnings": warnings, "strict": args.strict,
                     "inherited_from_baseline": inherited, "allowed_by_lock": allowed},
         "measurement": {"font": MEASURER.font_path if MEASURER.enabled else None,
-                        "mode": "measured" if MEASURER.enabled else "estimate"},
+                        "mode": "measured" if MEASURER.enabled else "estimate",
+                        "contrast_unmeasured": deck_state["contrast_unmeasured"]},
         "passed": passed,
     }
     output = json.dumps(report, ensure_ascii=False, indent=2)
@@ -1535,12 +1738,13 @@ def main(argv=None):
             fh.write(output + "\n")
     print(output)
 
-    print("--- pptx_lint: %d slides, %d errors, %d warnings, passed=%s%s%s (text: %s)" % (
+    print("--- pptx_lint: %d slides, %d errors, %d warnings, passed=%s%s%s (text: %s, contrast unmeasured: %d)" % (
         len(slides), errors, warnings, passed,
         (", %d inherited from baseline" % inherited)
         if (baseline_parts or baseline_legacy_titles or baseline_deck_codes) else "",
         (", %d allowed by lock" % allowed) if allowed else "",
-        "measured with " + os.path.basename(MEASURER.font_path) if MEASURER.enabled else "estimated"), file=sys.stderr)
+        "measured with " + os.path.basename(MEASURER.font_path) if MEASURER.enabled else "estimated",
+        deck_state["contrast_unmeasured"]), file=sys.stderr)
     for s in report_slides:
         for f in s["findings"]:
             if f["severity"] in ("error", "warning") and not skip(f):

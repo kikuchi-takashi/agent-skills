@@ -496,6 +496,43 @@ def _(g, p):
                        [_LONG], "出典: 計画")
 
 
+@case("淡い面の上の薄い文字を咎める", expect=["TEXT_CONTRAST_LOW"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "淡い面の上に薄い文字を置いたページの主張")
+    g["rect"](s, g["M"], g["BODY_Y"], 6.0, 2.0, "panel")          # 淡い面
+    g["text"](s, g["M"] + 0.3, g["BODY_Y"] + 0.3, 5.4, 1.4,
+              ["この行は淡い面の上に罫線色で置かれていて読めない。"],
+              g["SIZE"]["body"], color="line")                    # 面とほぼ同じ明るさ
+
+
+@case("本文色と出典色は咎めない", forbid=["TEXT_CONTRAST_LOW"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "地の上に本文色と補助色を置いたページの主張")
+    g["text"](s, g["M"], g["BODY_Y"], 7.0, 1.4, ["本文の色で書いた行。"], g["SIZE"]["body"])
+    g["text"](s, g["M"], g["BODY_Y"] + 1.6, 7.0, 0.5, ["補助の色で書いた行。"],
+              g["SIZE"]["body"], color="muted")
+    g["page_source"](s, "出典: 資料")
+
+
+@case("写真の上の文字は咎めない（判定できないため）", forbid=["TEXT_CONTRAST_LOW"])
+def _(g, p):
+    import io
+    from PIL import Image
+    base(g, p)
+    s = g["blank"](p)
+    buf = io.BytesIO()
+    Image.new("RGB", (600, 400), (120, 120, 120)).save(buf, "PNG")
+    buf.seek(0)
+    from pptx.util import Inches
+    s.shapes.add_picture(buf, Inches(0), Inches(0), Inches(g["W"]), Inches(g["H"]))
+    g["scrim"](s, 0, 4.0, g["W"], 3.5)                            # 半透明の面
+    g["text"](s, 0.8, 4.6, 8.0, 1.0, ["写真の上に置いた一文。"], g["SIZE"]["h2"], color="bg")
+
+
 @case("座標で線を引くと咎める", expect=["CONNECTOR_DIAGONAL"])
 def _(g, p):
     from pptx.util import Inches
