@@ -385,15 +385,19 @@ class Renderer(object):
         if plot is None:
             self.box_label(draw, shape["box"], "chart")
             return
-        series, chart_type, bar_dir = [], None, "col"
+        # plotArea には *Chart が複数入りうる（棒＋線の複合）。**最初の1つで
+        # 打ち切らない**——打ち切ると複合図表の線が描かれず、QAで確認できない。
+        groups, color_i = [], 0
         for child in plot:
             tag = child.tag.split("}")[-1]
             if tag.endswith("Chart"):
-                chart_type = tag
+                series, bar_dir = [], "col"
                 bd = child.find(ns + "barDir")
                 if bd is not None:
                     bar_dir = bd.get("val", "col")
-                for i, ser in enumerate(child.findall(ns + "ser")):
+                for ser in child.findall(ns + "ser"):
+                    i = color_i
+                    color_i += 1
                     cats = [pt.findtext(ns + "v") or "" for pt in ser.findall(ns + "cat//" + ns + "pt")]
                     vals = []
                     for pt in ser.findall(ns + "val//" + ns + "pt"):
@@ -412,28 +416,53 @@ class Renderer(object):
                     show_val = ser.find(ns + "dLbls/" + ns + "showVal")
                     if show_val is None:
                         show_val = child.find(ns + "dLbls/" + ns + "showVal")
-                    series.append({"cats": cats, "vals": vals, "color": color,
+                    xs, sizes = [], []
+                    if not vals:                    # 散布図・バブルは y が c:yVal にある
+                        for pt in ser.findall(ns + "yVal//" + ns + "pt"):
+                            try:
+                                vals.append(float(pt.findtext(ns + "v")))
+                            except (TypeError, ValueError):
+                                vals.append(0.0)
+                    for pt in ser.findall(ns + "xVal//" + ns + "pt"):    # 散布図・バブル
+                        try:
+                            xs.append(float(pt.findtext(ns + "v")))
+                        except (TypeError, ValueError):
+                            xs.append(0.0)
+                    for pt in ser.findall(ns + "bubbleSize//" + ns + "pt"):
+                        try:
+                            sizes.append(float(pt.findtext(ns + "v")))
+                        except (TypeError, ValueError):
+                            sizes.append(1.0)
+                    series.append({"cats": cats, "vals": vals, "xs": xs, "sizes": sizes,
+                                   "color": color,
                                    "labels": show_val is not None and show_val.get("val") == "1"})
-                break
-        if not series or chart_type is None:
+                if series:
+                    groups.append((tag, bar_dir, series))
+        if not groups:
             self.box_label(draw, shape["box"], "chart")
             return
         pad = 0.35
         inner = (x + pad, y + pad * 0.6, w - pad * 1.6, h - pad * 2.4)
         font = self.fonts.get(int(self.pt_px(10)), True)
-        if chart_type in ("barChart", "bar3DChart"):
-            self.draw_bars(draw, inner, series, bar_dir, font)
-        elif chart_type in ("lineChart", "areaChart", "scatterChart"):
-            self.draw_lines(draw, inner, series, font)
-        elif chart_type in ("pieChart", "doughnutChart", "pie3DChart"):
-            self.draw_pie(draw, inner, series[0], chart_type.startswith("doughnut"), font)
-        else:
-            self.box_label(draw, shape["box"], "chart: " + chart_type)
+        # 複合のときは目盛を揃える。別々に取ると棒と線の高さが比べられなくなる
+        all_vals = [v for _, _, ss in groups for s_ in ss for v in s_["vals"]] or [0.0]
+        span = (max(max(all_vals), 0.0), min(min(all_vals), 0.0)) if len(groups) > 1 else None
+        for tag, bar_dir, series in groups:
+            if tag in ("barChart", "bar3DChart"):
+                self.draw_bars(draw, inner, series, bar_dir, font, span)
+            elif tag in ("scatterChart", "bubbleChart"):
+                self.draw_points(draw, inner, series, tag == "bubbleChart")
+            elif tag in ("lineChart", "areaChart"):
+                self.draw_lines(draw, inner, series, font, span)
+            elif tag in ("pieChart", "doughnutChart", "pie3DChart"):
+                self.draw_pie(draw, inner, series[0], tag.startswith("doughnut"), font)
+            else:
+                self.box_label(draw, shape["box"], "chart: " + tag)
 
-    def draw_bars(self, draw, inner, series, bar_dir, font):
+    def draw_bars(self, draw, inner, series, bar_dir, font, span=None):
         ix, iy, iw, ih = inner
         all_vals = [v for s in series for v in s["vals"]] or [0.0]
-        vmax, vmin = max(max(all_vals), 0.0), min(min(all_vals), 0.0)
+        vmax, vmin = span if span else (max(max(all_vals), 0.0), min(min(all_vals), 0.0))
         span = (vmax - vmin) or 1.0
         n_cat = max(len(s["vals"]) for s in series)
         n_ser = len(series)
@@ -472,12 +501,15 @@ class Renderer(object):
                 for j, cat in enumerate(series[0]["cats"]):
                     self.text_line(draw, cat, (ix - 0.3, iy + j * slot + slot * 0.3), font, (80, 80, 80))
 
-    def draw_lines(self, draw, inner, series, font):
+    def draw_lines(self, draw, inner, series, font, shared=None):
         ix, iy, iw, ih = inner
         all_vals = [v for s in series for v in s["vals"]] or [0.0]
-        vmax, vmin = max(all_vals), min(all_vals)
-        if vmin > 0:
-            vmin = 0.0
+        if shared:
+            vmax, vmin = shared
+        else:
+            vmax, vmin = max(all_vals), min(all_vals)
+            if vmin > 0:
+                vmin = 0.0
         span = (vmax - vmin) or 1.0
         n = max(len(s["vals"]) for s in series)
         draw.line([self.px(ix), self.px(iy + ih), self.px(ix + iw), self.px(iy + ih)], fill=(160, 160, 160))
@@ -492,8 +524,40 @@ class Renderer(object):
             for p in pts:
                 draw.ellipse([p[0] - 3, p[1] - 3, p[0] + 3, p[1] + 3], fill=s["color"])
         if font:
-            for j, cat in enumerate(series[0]["cats"]):
-                self.text_line(draw, cat, (ix + (iw * (j + 0.5) / max(n, 1)) - 0.2, iy + ih + 0.05), font, (80, 80, 80))
+            if not shared:            # 複合では棒がすでに項目名を描いている
+                for j, cat in enumerate(series[0]["cats"]):
+                    self.text_line(draw, cat, (ix + (iw * (j + 0.5) / max(n, 1)) - 0.2, iy + ih + 0.05), font, (80, 80, 80))
+
+    def draw_points(self, draw, inner, series, sized):
+        """散布図とバブル。x と y を両方の軸に取る。**カテゴリではない。**
+
+        これを描かないと、点の図は灰色の箱として出る。lint は通っても
+        「見て確かめる」ができないので、図の妥当性を誰も判定できない。
+        """
+        ix, iy, iw, ih = inner
+        xs = [v for s_ in series for v in s_["xs"]] or [0.0]
+        ys = [v for s_ in series for v in s_["vals"]] or [0.0]
+        x0, x1 = min(xs), max(xs)
+        y0, y1 = min(min(ys), 0.0), max(ys)
+        xspan, yspan = (x1 - x0) or 1.0, (y1 - y0) or 1.0
+        draw.line([self.px(ix), self.px(iy + ih), self.px(ix + iw), self.px(iy + ih)],
+                  fill=(160, 160, 160))
+        draw.line([self.px(ix), self.px(iy), self.px(ix), self.px(iy + ih)], fill=(160, 160, 160))
+        big = max((v for s_ in series for v in s_["sizes"]), default=1.0) or 1.0
+        for s_ in series:
+            pts = []
+            for i, y in enumerate(s_["vals"]):
+                x = s_["xs"][i] if i < len(s_["xs"]) else i
+                cx = ix + iw * ((x - x0) / xspan)
+                cy = iy + ih * (1.0 - (y - y0) / yspan)
+                pts.append((cx, cy))
+                r = 0.05
+                if sized and i < len(s_["sizes"]):
+                    r = 0.05 + 0.14 * (s_["sizes"][i] / big) ** 0.5
+                draw.ellipse([self.px(cx - r), self.px(cy - r),
+                              self.px(cx + r), self.px(cy + r)], fill=s_["color"])
+            if not sized and len(pts) > 1 and s_.get("joined"):
+                draw.line([(self.px(a), self.px(b)) for a, b in pts], fill=s_["color"], width=2)
 
     def draw_pie(self, draw, inner, s, doughnut, font):
         ix, iy, iw, ih = inner

@@ -548,8 +548,14 @@ CHART_KINDS = {                            # 用途 → PowerPoint のネイテ�
     "bar_h": XL_CHART_TYPE.BAR_CLUSTERED,       # 項目名が長い比較
     "bar_stacked_100": XL_CHART_TYPE.COLUMN_STACKED_100,  # 構成比の推移（合計を揃える）
     "scatter": XL_CHART_TYPE.XY_SCATTER,        # 2変数の関係（相関を主張するとき）
+    "scatter_line": XL_CHART_TYPE.XY_SCATTER_LINES,  # 2変数の軌跡（時間で位置が動く）
+    "bubble": XL_CHART_TYPE.BUBBLE,             # 3変数（x・y・大きさ）
+    "line_plain": XL_CHART_TYPE.LINE,           # 時点が8つ以上。印を出すと潰れる
+    "bar_h_stacked": XL_CHART_TYPE.BAR_STACKED,  # 項目名が長い内訳
+    "combo": XL_CHART_TYPE.COLUMN_CLUSTERED,    # 棒＋線。最後の系列を線にする
 }
-SCATTER_KINDS = ("scatter",)                    # 点の (x, y) を渡す。カテゴリではない
+SCATTER_KINDS = ("scatter", "scatter_line")     # 点の (x, y) を渡す。カテゴリではない
+BUBBLE_KINDS = ("bubble",)                      # (x, y, 大きさ) を渡す
 
 
 def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0"):
@@ -569,6 +575,13 @@ def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0"):
             ser = data.add_series(name)
             for px, py in points:
                 ser.add_data_point(px, py)
+    elif kind in BUBBLE_KINDS:
+        from pptx.chart.data import BubbleChartData
+        data = BubbleChartData()
+        for name, points in series:
+            ser = data.add_series(name)
+            for px, py, size in points:
+                ser.add_data_point(px, py, size)
     else:
         data = CategoryChartData()
         data.categories = categories
@@ -585,6 +598,12 @@ def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0"):
             ea = etree.SubElement(rpr, qn("a:ea")); latin.addnext(ea); ea.set("typeface", FONT)
     plot = chart.plots[0]
     circular = kind in ("pie", "doughnut")
+    if kind in BUBBLE_KINDS:                    # 大きさで3つ目の量を表す。5点までに抑える
+        for i, ser in enumerate(plot.series):
+            ser.format.fill.solid()
+            ser.format.fill.fore_color.rgb = RGBColor.from_string(
+                CHART_SERIES[i % len(CHART_SERIES)])
+        return chart
     if kind in SCATTER_KINDS:                   # 点の図はデータラベルを出さない（潰れる）
         # 0.6 系の python-pptx は散布図の has_data_labels を扱えないので触らない
         for i, ser in enumerate(plot.series):
@@ -612,6 +631,27 @@ def chart(slide, x, y, w, h, categories, series, kind="bar", fmt="0.0"):
         ca.format.line.color.rgb = RGBColor.from_string(C["line"])
         if any(v < 0 for _, values in series for v in values):
             ca.tick_label_position = XL_TICK_LABEL_POSITION.LOW   # 負の棒に項目名が重ならない
+    if kind == "combo":
+        # **最後の系列を折れ線にする。** 実績の棒に目標の線を重ねるときに使う。
+        # python-pptx は複合を作れないので、系列を lineChart へ移す。
+        # 軸は棒と共有する（別軸にすると軸 id の宣言が要り、書き損じると
+        # PowerPoint がファイルごと拒否する）。単位が違う系列を混ぜない。
+        area = chart._chartSpace.find(qn("c:chart")).find(qn("c:plotArea"))
+        bar_el = area.find(qn("c:barChart"))
+        sers = bar_el.findall(qn("c:ser"))
+        if len(sers) >= 2:
+            moved = sers[-1]
+            bar_el.remove(moved)
+            line_el = etree.Element(qn("c:lineChart"))
+            etree.SubElement(line_el, qn("c:grouping")).set("val", "standard")
+            etree.SubElement(line_el, qn("c:varyColors")).set("val", "0")
+            line_el.append(moved)
+            etree.SubElement(line_el, qn("c:marker")).set("val", "1")
+            for ax in bar_el.findall(qn("c:axId")):
+                etree.SubElement(line_el, qn("c:axId")).set("val", ax.get("val"))
+            bar_el.addnext(line_el)
+        return chart
+
     for i, ser in enumerate(plot.series):
         if circular:                        # 円は区分ごとに色を変える
             for j, point in enumerate(ser.points):
@@ -1549,6 +1589,7 @@ if __name__ == "__main__":
 - **textbox には内側の余白がある（既定 0.1in / 0.05in）。** 罫線や図形と端をそろえるなら余白を 0 にする。
 - **自動縮小に頼らない。** `auto_size = MSO_AUTO_SIZE.NONE` にし、文字数の予算で収める。`SHAPE_TO_FIT_TEXT` は PowerPoint で開き直すまで反映されないことがある。
 - **スライドの複製ができない。** 同じ構成のページは関数で再生成する。テンプレのスライド複製が必要なら OOXML を直接扱う。
+- **複合（棒＋線）は python-pptx が作れない。** `chart(kind="combo")` が系列を `lineChart` へ移して作る。**軸は棒と共有する**——別軸にすると軸 id の宣言が要り、書き損じると PowerPoint がファイルごと拒否する。単位が違う系列を混ぜない（実績と目標、実績と前年ならよい）。
 - **ネイティブ図表の書式は既定が古い。** `chart.has_title`、`chart.has_legend`（単系列は False）、`plot.has_data_labels`、系列の色、目盛線の色（`value_axis.major_gridlines.format.line.color.rgb`）、`category_axis.tick_labels.font.size` を必ず設定する。縦の目盛線は消す。骨格の `bar_chart()` が最低限を行う。
 - **負の値の棒は、`<c:invertIfNegative val="0"/>` を系列に明示する。** python-pptx はこれを書かず、PowerPoint 以外のビューアでは負の棒が絶対値で上向きに描かれることがある（実測: −1.9 が +1.9 に見える）。受け手がそのビューアで開くと数値が違って見える。負の値があるときは項目名の位置を `XL_TICK_LABEL_POSITION.LOW` にして棒と重ねない。
 - **図表の文字にも書体を設定する。** `chart.font.name` と `chart.font.size` を設定し、和文ラベルがあるなら `txPr` に `a:ea` を追加する。

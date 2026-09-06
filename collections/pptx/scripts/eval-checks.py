@@ -353,11 +353,37 @@ def _(g, p):
                kind="bar_stacked_100", fmt="0")
 
 
-@case("図表9種がすべて作れる", forbid=["TEXT_OVERFLOW_LIKELY"])
+@case("複合・軌跡・バブル・印無し折れ線・横向き内訳",
+      forbid=["TEXT_OVERFLOW_LIKELY", "CHART_NEGATIVE_RENDER"])
+def _(g, p):
+    base(g, p)
+    s = g["blank"](p)
+    g["page_title"](s, "遅延件数は目標を4月から一度も下回っていない")
+    g["chart"](s, g["M"], g["BODY_Y"], 8.0, 3.4, ["4月", "5月", "6月"],
+               [("実績", (214, 231, 258)), ("目標", (220, 220, 240))], kind="combo")
+    s2 = g["blank"](p)
+    g["page_title"](s2, "拠点の位置は2年で右上へ動いたページの主張")
+    g["chart"](s2, g["M"], g["BODY_Y"], 7.0, 3.4, None,
+               [("近畿", [(18.1, 52), (21.0, 70), (24.3, 88)])], kind="scatter_line")
+    s3 = g["blank"](p)
+    g["page_title"](s3, "取扱量が多い拠点ほど滞留も大きいページの主張")
+    g["chart"](s3, g["M"], g["BODY_Y"], 7.0, 3.4, None,
+               [("拠点", [(16.2, 31, 4.0), (24.3, 88, 12.0)])], kind="bubble")
+    s4 = g["blank"](p)
+    g["page_title"](s4, "12か月の推移では印を出さないページの主張")
+    g["chart"](s4, g["M"], g["BODY_Y"], 8.0, 3.4, ["%d月" % i for i in range(1, 13)],
+               [("件数", tuple(range(200, 320, 10)))], kind="line_plain")
+    s5 = g["blank"](p)
+    g["page_title"](s5, "拠点名が長いので横向きの内訳にするページの主張")
+    g["chart"](s5, g["M"], g["BODY_Y"], 8.0, 3.4, ["西日本統括部 近畿", "九州統括部"],
+               [("在庫要因", (121, 40)), ("輸送要因", (62, 20))], kind="bar_h_stacked")
+
+
+@case("図表14種がすべて作れる", forbid=["TEXT_OVERFLOW_LIKELY"])
 def _(g, p):
     base(g, p)
     for kind in ("bar", "bar_stacked", "line", "area", "pie", "doughnut", "bar_h",
-                 "bar_stacked_100"):
+                 "bar_stacked_100", "line_plain", "bar_h_stacked"):
         s = g["blank"](p)
         g["page_title"](s, "図表 %s を主役にしたページの主張" % kind)
         series = [("系列1", (3.0, 5.0, 4.0))]
@@ -1047,6 +1073,64 @@ def main():
     else:
         failures += 1
         print("NG  折り返しは実際に数え、骨格と lint が一致する（%s）" % detail)
+
+    # 描画がすべての図表を実際に描く（灰色の箱で逃げない）。
+    # lint が通っても描けなければ、図の妥当性を目で確かめられない。
+    try:
+        from PIL import Image
+        scope = env(workdir)
+        chart_prs = scope["new_deck"]()
+        kinds = ("bar", "line", "pie", "bar_h", "bar_stacked_100", "line_plain",
+                 "bar_h_stacked", "scatter", "scatter_line", "bubble", "combo")
+        for kind in kinds:
+            sl = scope["blank"](chart_prs)
+            scope["page_title"](sl, "図表 %s を主役にしたページの主張" % kind)
+            if kind in ("scatter", "scatter_line"):
+                data = [("系列", [(1.0, 2.0), (3.0, 5.0), (4.0, 4.0)])]
+                cats = None
+            elif kind == "bubble":
+                data = [("系列", [(1.0, 2.0, 3.0), (3.0, 5.0, 6.0)])]
+                cats = None
+            elif kind == "combo":
+                data = [("実績", (3.0, 5.0, 4.0)), ("目標", (4.0, 4.0, 4.0))]
+                cats = ["A", "B", "C"]
+            else:
+                data = [("系列1", (3.0, 5.0, 4.0))]
+                cats = ["A", "B", "C"]
+                if kind in ("bar_stacked_100", "bar_h_stacked"):
+                    data.append(("系列2", (1.0, 2.0, 1.5)))
+            scope["chart"](sl, scope["M"], scope["BODY_Y"], 7.0, 3.4, cats, data, kind=kind)
+        chart_path = os.path.join(workdir, "charts.pptx")
+        chart_prs.save(chart_path)
+        render = ROOT / "pptx-review" / "scripts" / "render_preview.py"
+        out = subprocess.run([sys.executable, str(render), chart_path,
+                              "--out", os.path.join(workdir, "cq")], capture_output=True, text=True)
+        blank_pages = []
+        for i, kind in enumerate(kinds, 1):
+            img = Image.open(os.path.join(workdir, "cq-%02d.png" % i)).convert("RGB")
+            body = img.crop((int(img.width * 0.05), int(img.height * 0.28),
+                             int(img.width * 0.72), int(img.height * 0.78)))
+            # 軸線（灰色）と地（白）を除き、**系列の色**が塗られているかを見る。
+            # 軸だけ引いて中身が空でも「描けている」と数えないため。
+            ink = 0
+            for count, col in body.getcolors(300000) or []:
+                r_, g_, b_ = col
+                if col == (255, 255, 255):
+                    continue
+                if abs(r_ - g_) < 12 and abs(g_ - b_) < 12 and r_ > 120:
+                    continue                   # 無彩色の淡い線（軸・目盛）は数えない
+                ink += count
+            if ink < 200:
+                blank_pages.append(kind)
+        charts_drawn = not blank_pages and out.returncode == 0
+    except Exception:
+        charts_drawn, blank_pages = False, ["例外"]
+    if charts_drawn:
+        ok += 1
+        print("ok  描画がすべての図表を実際に描く")
+    else:
+        failures += 1
+        print("NG  描画がすべての図表を実際に描く（描けていない: %s）" % blank_pages)
 
     # 文法の禁じ手は重大度が上がる（allow の逆）。
     esc_prs = scope["new_deck"]()
