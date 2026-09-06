@@ -2,9 +2,9 @@
 name: pptx-edit
 description: "既存のPowerPoint（.pptx/.potx）を、元のデザインに揃えたまま編集する。設計値を機械的に抽出し、既存要素を複製して作ることで、修正したページだけ浮くことを防ぐ。文言の差替、スライドの追加・削除・並べ替え、テンプレへの流し込み、図表データの更新、生成AIっぽい装飾の除去、体裁の修正に使う。「このPPTを直して」「スライド3を修正」「テンプレに流し込んで」「AIっぽさを消して」など、既存ファイルがあるときに使う。新規作成は pptx-create、配色やデザイン方針は pptx-design、監査だけなら pptx-review。"
 license: MIT
-compatibility: "Python 3.9+ と python-pptx（lxml、Pillow）。構造変更は zipfile と XML 編集。設計値の抽出・検査・描画は pptx-review 同梱のスクリプト。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に使う。"
+compatibility: "Python 3.9+ と python-pptx（lxml、Pillow）。構造変更は zipfile と XML 編集。設計値の抽出・検査・描画は pptx-review 同梱のスクリプト。図表・SmartArt・画像を含む場合、最終合格にはPowerPoint互換描画が必要。"
 metadata:
-  version: "1.7.0"
+  version: "1.8.0"
   publisher: "agent-skills"
   bundle: pptx-suite
 ---
@@ -31,8 +31,8 @@ pptx-create の工程0と同じ表で経路を決める。`python-pptx` が無�
 
 - 全ページを描画し（pptx-review の `render_preview.py --sheet`）、一覧を見る。
 - テキストを書き出す（pptx-create の `qa.md` と同じ python-pptx の短いスクリプト）。
-- **設計値を機械的に抽出する**（目分量で読み取らない）。pptx-review の `extract_style.py` に `--json-out deck/design-lock.json --md-out deck/design-lock.md` を渡す。タイトルの位置・サイズ・色、本文の左端とサイズの語彙、出典の位置、余白、書体、色、そして役割ごとの複製元が出る。手順は `references/match-existing-design.md`。
-- pptx-review スキルが導入されていれば lint を通し、元の状態の指摘を `deck/before/lint.json` に残す。元から壊れていた箇所と、自分が壊した箇所を区別するため。
+- **設計値を機械的に抽出する**（目分量で読み取らない）。pptx-review の `extract_style.py` に `--json-out deck/design-lock.json --md-out deck/design-lock.md` を渡す。タイトルの位置・サイズ・色、本文の左端とサイズの語彙、出典の位置、余白、書体、色、そして**レイアウト別**の複製元が出る。手順は `references/match-existing-design.md`。
+- bundleに必ず含まれるpptx-reviewでlintを通し、元の状態の指摘を `deck/before/lint.json` に残す。元から壊れていた箇所と、自分が壊した箇所を区別するため。
 
 ### 2. 変更範囲（`deck/changes.md`）
 
@@ -45,24 +45,33 @@ pptx-create の工程0と同じ表で経路を決める。`python-pptx` が無�
 
 ページを追加する、原型を変える、または意味領域を組み替える場合は、変更対象について pptx-create の `references/implementation-spec.md` と同じ `implementation-spec.json` / `.md` を編集前に作る。文言だけの差し替えでは `changes.md` で足りる。
 
+編集前PPTXのハッシュを固定した契約を、**編集を始める前**に作る。座標・図形追加など意図した変更は `allow` にページ・図形・理由を記入する。別の原本へ契約を流用できない。
+
+```bash
+python3 <skills>/pptx-review/scripts/layout_guard.py deck/original.pptx \
+  --init-contract deck/edit-contract.json
+```
+
 ### 3. 手法の選択
 
 | 変更 | 手法 |
 |---|---|
-| 文言の差替（書式維持） | python-pptx で run 単位に `run.text` を書き換える。`text_frame.text =` は書式を消すので使わない |
+| 単一段落の文言差替 | `scripts/safe_text_replace.py`。run書式と幾何が不変で、箱の使用率90%以下の場合だけ別名へ保存する |
+| 複数段落の文言差替 | run単位で変更し、段落数・箇条書き・行間を維持する。変更直後に `layout_guard --contract` を通す |
 | 図形の位置・大きさ・色 | python-pptx の shape 属性 |
 | 図表の数値 | `chart.replace_data(chart_data)` |
 | 表のセル | `cell.text_frame.paragraphs[0].runs[0].text` |
 | 図表・表の**新規追加** | 同じデッキに既存の図表・表があれば複製して数値を差し替える（書式が揃う）。無ければ `add_chart` / `add_table` で作り、色・書体は `design-lock.json` の抽出値に合わせる。**画像として貼らない** |
 | スライドの追加（テンプレのレイアウトから） | `prs.slides.add_slide(layout)` |
-| スライドの複製・削除・並べ替え、テンプレ流し込み | python-pptx では複製ができない。`references/ooxml-editing.md` の手順で XML を直接扱う |
+| 単純なスライドの複製 | `scripts/clone_slide.py`。画像・リンクのrelationshipを付け替える。図表・SmartArt・OLE・動画・アニメーションは拒否する |
+| 複雑なスライドの複製・削除・並べ替え、テンプレ流し込み | `references/ooxml-editing.md`。拒否された部品を手作業で共有しない |
 | 装飾の除去（飾り線・色帯・絵文字） | `references/cleanup-checklist.md` |
 
 `.ppt`（旧形式）はこのスキルでは扱えない。利用者に PowerPoint で `.pptx` に保存し直してもらう。`.potx` は `.pptx` と同じ手順で扱い、拡張子を保つ。
 
 ### 4. 編集
 
-**新しい要素は既存要素の複製から作る。** `design-lock.md` の複製元を `copy.deepcopy` で写し、位置と文言だけ変える。ゼロから `add_textbox` すると PowerPoint の既定書式（Calibri 18pt 黒、行間 1.0）になり、そのページだけ浮く。ページを足すときも、同じ役割の既存ページを複製してから中身を差し替える。詳細は `references/match-existing-design.md`。
+**新しい要素は、同じレイアウトの既存要素から作る。** `design-lock.md` の「レイアウト別の設計値と複製元」を使う。全体多数派の複製元は互換用であり、編集対象と違うレイアウトへ流用しない。同じレイアウトに複製元が無ければ、図形を新設せず、近いページ全体を複製するか実装仕様書を作って再設計する。詳細は `references/match-existing-design.md`。
 
 - スクリプト（`deck/edit.py`）で行い、手作業の XML 編集は最小限にする。同じ編集を再実行できる状態にしておく。
 - 文言を差し替えるときは、元と同程度の長さにする。長くなるなら箱の大きさを見直すか、文を削る。縮小しない。
@@ -74,14 +83,15 @@ pptx-create の工程0と同じ表で経路を決める。`python-pptx` が無�
 ### 5. 品質確認（`deck/qa/`）
 
 - 再オープン検査: Python で `Presentation("deck/output.pptx")` を開く。例外が出れば壊れている。
-- **編集前後のレイアウト比較**: `pptx-review/scripts/layout_guard.py deck/original.pptx deck/output.pptx --strict --json-out deck/qa/layout-guard.json` を実行する。座標・寸法、重ね順、placeholder、段落/run書式、自動調整、画像crop、表の行列寸法、theme/layout、共有部品の変化を図形IDで比較する。意図した変化だけを `--allow deck/layout-allow.json` に理由つきで登録し、未許可の変化を0にする。原因と検査範囲はpptx-reviewの `references/layout-stability.md`。
-- pptx-review があれば `--lock deck/design-lock.json --baseline deck/before/lint.json` を付けて lint を通し、**新しく増えた指摘**を 0 にする。元からある指摘は `inherited` として集計され、報告に書く。
+- **編集前後のレイアウト比較**: `pptx-review/scripts/layout_guard.py deck/original.pptx deck/output.pptx --contract deck/edit-contract.json --strict --json-out deck/qa/layout-guard.json` を実行する。座標・寸法、回転・反転、グループ座標系、コネクタ接続、重ね順、placeholder、段落/run書式、自動調整、画像crop、表の行列寸法、関連画像・図表、theme/layoutを比較する。未許可の変化を0にする。原因と検査範囲はpptx-reviewの `references/layout-stability.md`。
+- `--lock deck/design-lock.json --baseline deck/before/lint.json` を付けて lint を通し、**新しく増えた指摘**を 0 にする。元からある指摘は `inherited` として集計され、報告に書く。
 - **統一性の指摘**（`TITLE_POSITION_DRIFT`、`TITLE_SIZE_DRIFT`、`MARGIN_DRIFT`、`BODY_SIZE_DRIFT`、`PALETTE_DRIFT`）が自分の触ったページに出ていたら、必ず直す。これが「修正したページだけデザインが違う」の直接の検出である。
 - 描画の一覧（`render_preview.py --sheet`）で、触ったページが他と同じ骨格に見えるかを確かめる。1枚ずつ見ると気づかない。
 - 触ったページに図表・表を足したなら、`Presentation` で開き直して `shape.has_chart` / `shape.has_table` が真であることを確かめる。lint の `FULL_PAGE_PICTURE` はページの85%以上を占める画像しか見ないので、ページの一部に貼った画像の図表は検出できない。
 - 触ったページを描画して1枚ずつ見る。加えて全体を一覧し、他のページとの整合（タイトル位置、余白、フッター）を確認する。描画の手順は pptx-create の `references/qa.md` ゲート3にある。
 - テキストを再度書き出し、変更前との差分が `deck/changes.md` の範囲に収まっていることを確認する。
 - 実装仕様書を作った編集では、`qa_evidence.py init` で生成後の設計〜実装対応表とQA証跡を作る。形式的QAとデザイン的QAを分け、全ページの個別previewと一覧previewに根拠を記入して `qa_evidence.py check` を通す。
+- 図表・SmartArt・画像を含む場合、`qa_evidence.py` がPowerPoint互換描画の確認を必須にする。手段が無ければ「未確認」として納品を止め、簡易描画だけで合格にしない。
 
 ### 6. 報告
 
@@ -103,6 +113,7 @@ pptx-create の工程0と同じ表で経路を決める。`python-pptx` が無�
 - 構造変更（追加・削除・並べ替え）を先に、内容変更を後に。
 - `copy.deepcopy(shape._element)` を別スライドへ使うのはrelationshipを持たないテキストボックスと基本図形だけ。画像・図表・SmartArt・リンクはスライドごと複製する。
 - 描画画像を見ずに完了と言わない。
+- `safe_text_replace.py` が拒否した文言を、検査を外して直接書き込まない。文章を短くするかレイアウトを明示的に再設計する。
 
 ## 出力
 

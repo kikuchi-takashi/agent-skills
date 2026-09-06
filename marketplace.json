@@ -92,8 +92,8 @@
       "collection": "pptx",
       "path": "pptx/pptx-edit",
       "license": "MIT",
-      "compatibility": "Python 3.9+ と python-pptx（lxml、Pillow）。構造変更は zipfile と XML 編集。設計値の抽出・検査・描画は pptx-review 同梱のスクリプト。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に使う。",
-      "version": "1.7.0",
+      "compatibility": "Python 3.9+ と python-pptx（lxml、Pillow）。構造変更は zipfile と XML 編集。設計値の抽出・検査・描画は pptx-review 同梱のスクリプト。図表・SmartArt・画像を含む場合、最終合格にはPowerPoint互換描画が必要。",
+      "version": "1.8.0",
       "bundle": "pptx-suite"
     },
     {
@@ -103,8 +103,8 @@
       "collection": "pptx",
       "path": "pptx/pptx-review",
       "license": "MIT",
-      "compatibility": "Python 3.9+。lint と設計値抽出は標準ライブラリのみ、簡易描画は Pillow。和文の書体ファイルがあれば字形まで描く。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に併用する。",
-      "version": "1.7.0",
+      "compatibility": "Python 3.9+。lint と設計値抽出は標準ライブラリのみ、簡易描画は Pillow。和文の書体ファイルがあれば字形まで描く。図表・SmartArt・画像を含む場合、最終合格にはPowerPoint互換描画が必要。",
+      "version": "1.8.0",
       "bundle": "pptx-suite"
     },
     {

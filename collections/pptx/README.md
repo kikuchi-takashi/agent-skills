@@ -68,6 +68,8 @@ npx skills add kikuchi-takashi/agent-skills/collections/pptx \
 - `render_preview.py`: スライドとコンタクトシートを簡易描画する
 - `qa_evidence.py`: 生成後の設計〜実装対応表と、全ページ個別・一覧目視を含む分離QA証跡を作成・検査する
 
+`pptx-edit` には、余裕を測ってから単一段落を差し替える `safe_text_replace.py` と、安全に扱えない複合部品を拒否する `clone_slide.py` が含まれます。既存デッキの設計値は全体多数派だけでなくレイアウト別に抽出します。
+
 `pptx-create` には `check_implementation_spec.py` があり、生成前のスライド実装仕様書、構成との一致、事前previewの代表性を検査します。
 
 ## 実行環境と能力選択
@@ -110,7 +112,7 @@ for name in modules:
 
 ## 検証済みの互換基準
 
-Python 3.9、python-pptx 0.6.21、Pillow 8.3.2を互換基準とし、骨格の26原型と14種の図表、palette自動生成、実装仕様・QA証跡検査、101件の評価ケースと見た目の基準画像で動作を確認しています。実行時に取得したライブラリの版は、再現条件としてQA結果に残します。
+Python 3.9、python-pptx 0.6.21、Pillow 8.3.2を互換基準とし、骨格の26原型と14種の図表、palette自動生成、実装仕様・QA証跡検査、109件の評価ケースと見た目の基準画像で動作を確認しています。実行時に取得したライブラリの版は、再現条件としてQA結果に残します。
 
 ## 用途別に束ねる例
 
@@ -120,7 +122,7 @@ Python 3.9、python-pptx 0.6.21、Pillow 8.3.2を互換基準とし、骨格の2
 
 保守用スクリプトも責任を持つスキルの `scripts/` に置き、bundleをインストールした環境で参照できるようにします。
 
-- `pptx-review/scripts/eval-checks.py`: 101件のケースでlint・編集前後比較・実装仕様・QA証跡の検出/非検出と運用上の回帰を確認する
+- `pptx-review/scripts/eval-checks.py`: 109件のケースでlint・編集前後比較・実装仕様・QA証跡の検出/非検出と運用上の回帰を確認する
 - `pptx-create/scripts/measure-skeleton.py`: 同じ内容を骨格で組んだ版と素の python-pptx で組んだ版で作り、指摘数・はみ出し数・検査できない箱の数を比べる
 - `pptx-review/scripts/visual-baseline.py`: 図形だけの見本を描画し、同じディレクトリの `baseline/shapes.png` と画素を突き合わせる。描画側の退行は数値に出ないため画素で見る
 - `pptx-review/scripts/audit-consistency.py`: 文書、骨格コード、監査ツールの数値・名称・オプションを照合する

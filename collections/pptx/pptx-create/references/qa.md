@@ -156,6 +156,7 @@ subprocess.run([
 - `formal_qa`: 形式的QAの総合判定と、再オープン・outline・実装仕様・lintの各証拠
 - `design_qa`: デザイン的QAの総合判定と、署名・形式選択・主役・リズムの各証拠
 - `sheet_review`: 一覧画像を開いて見た判定と、デッキ全体の所見
+- `native_render_review`: 図表・SmartArt・画像がある場合のPowerPoint互換描画による確認。手段が無ければ未確認のままにし、総合合格にしない
 - 各 `slide`: `implementation_match` と `individual_review` の判定、および**そのページ固有の所見**
 
 全項目を根拠つきの `pass` にした後、機械で完了を確かめる。画像ファイルがあるだけ、全ページに同じ定型文を貼っただけでは目視の根拠にならない。証跡作成時のPPTX・個別画像・一覧画像のSHA-256も保存され、後から差し替わった場合は再確認を要求する。

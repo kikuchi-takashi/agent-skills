@@ -114,6 +114,8 @@ def check_flags():
         "render_preview.py": REVIEW / "scripts" / "render_preview.py",
         "extract_style.py": REVIEW / "scripts" / "extract_style.py",
         "qa_evidence.py": REVIEW / "scripts" / "qa_evidence.py",
+        "safe_text_replace.py": ROOT / "pptx-edit" / "scripts" / "safe_text_replace.py",
+        "clone_slide.py": ROOT / "pptx-edit" / "scripts" / "clone_slide.py",
         "check_implementation_spec.py": ROOT / "pptx-create" / "scripts" / "check_implementation_spec.py",
         "generate_palette.py": ROOT / "pptx-design" / "scripts" / "generate_palette.py",
     }

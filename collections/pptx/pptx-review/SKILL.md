@@ -2,9 +2,9 @@
 name: pptx-review
 description: "PowerPoint（.pptx）を変更せずに監査し、はみ出し・キャンバス外・書体の混在・ページ間のデザインの不統一・生成AIらしい装飾や文章・論理構成・デザインロックとの乖離を、機械検査（同梱の pptx_lint.py、標準ライブラリのみ）と描画画像の目視で判定して報告する。「このPPTをレビューして」「AIっぽくないか見て」「納品前にチェック」「デッキを監査」のとき、および pptx-create / pptx-edit の品質確認を別コンテキストで行うときに使う。pptx-design が書いた design-lock.json を渡すと、それを基準に乖離を判定する。修正はしない。修正は pptx-edit、デザイン方針の作り直しは pptx-design。"
 license: MIT
-compatibility: "Python 3.9+。lint と設計値抽出は標準ライブラリのみ、簡易描画は Pillow。和文の書体ファイルがあれば字形まで描く。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に併用する。"
+compatibility: "Python 3.9+。lint と設計値抽出は標準ライブラリのみ、簡易描画は Pillow。和文の書体ファイルがあれば字形まで描く。図表・SmartArt・画像を含む場合、最終合格にはPowerPoint互換描画が必要。"
 metadata:
-  version: "1.7.0"
+  version: "1.8.0"
   publisher: "agent-skills"
   bundle: pptx-suite
 ---
@@ -25,7 +25,7 @@ metadata:
 - 密度モード: 講演型（`talk`）か資料型（`doc`）。不明なら `doc`
 - あれば `design-lock.json`（書体・役割付きpalette・追加許可色・最小サイズ）、`outline.md`（意図した構成）、`implementation-spec.json`（ページの実装契約）
 - 監査の観点の指定（例: 「AIっぽさだけ」「はみ出しだけ」）。無ければ全項目
-- 編集監査では、編集前の `.pptx` と、意図したレイアウト変更を理由つきで列挙したallow JSON
+- 編集監査では、編集前の `.pptx` と、そのSHA-256および意図したレイアウト変更を理由つきで記録したedit contract
 
 ## 手順
 
@@ -59,14 +59,18 @@ if result.returncode >= 2:
 - 4枚以上のデッキでは、ページ間の統一性（タイトルの位置と大きさ、本文の左端、本文サイズ、色）を多数派と比べ、外れたページに `*_DRIFT` を出す。`--no-consistency` で切れる。
 - lint は発見器であり、判定器ではない。`passed: true` でも視覚の確認は省略しない。逆に warning は文脈で意図的なものがあり得るので、1件ずつ理由を確認する。
 
-編集前のPPTXがある場合は、lintのbaselineとは別にレイアウト比較を行う。baselineは既存指摘を除外する機能で、図形が動いた・書式構造が変わったこと自体は比較しない。
+編集前のPPTXがある場合は、lintのbaselineとは別にレイアウト比較を行う。編集前に `--init-contract` で原本ハッシュを固定し、意図した変更を理由つきで書く。baselineは既存指摘を除外する機能で、図形が動いた・書式構造が変わったこと自体は比較しない。
 
 ```python
+subprocess.run([sys.executable, "scripts/layout_guard.py", "before.pptx",
+                "--init-contract", "qa/edit-contract.json"], check=True)
+# 編集後
 subprocess.run([sys.executable, "scripts/layout_guard.py", "before.pptx", "after.pptx",
-                "--strict", "--json-out", "qa/layout-guard.json"])
+                "--contract", "qa/edit-contract.json", "--strict",
+                "--json-out", "qa/layout-guard.json"])
 ```
 
-意図した座標変更、図形追加・削除などがある場合だけ、`--allow layout-allow.json` でコード・ページ・図形・理由を登録する。理由のないallowは無効。`EDIT_AUTOFIT_REFLOW`、theme/layout変更、共有された図表部品の変更は、見た目がその場で正常でも別環境や別ページを壊すため解消する。原因とコードの対応、簡易描画で確定できない範囲は `references/layout-stability.md` を読む。
+意図した座標変更、図形追加・削除などがある場合だけ、edit contractの `allow` にコード・ページ・図形・理由を登録する。理由のないallowは無効。`EDIT_AUTOFIT_REFLOW`、theme/layout変更、グループ座標・回転・コネクタ接続、関連画像・図表、共有部品の変更を照合する。原因とコードの対応、簡易描画で確定できない範囲は `references/layout-stability.md` を読む。
 
 ### 2. 描画
 
@@ -79,7 +83,7 @@ subprocess.run([sys.executable, "scripts/render_preview.py", "deck.pptx",
 
 `scripts/render_preview.py` は Pillow だけで描く簡易描画で、位置・折り返し・重なり・余白・色の配分を見るためのもの。PowerPoint と同じではない。
 
-描画確認は Pillow による簡易描画で行い、外部の変換ツールには依存しない。**ハーネス自身が PowerPoint を画像にする手段を持つ場合だけ**、簡易描画で位置と構造を確認したあとにもう一度見比べ、字形・影・図表の見え方を見る。無ければ簡易描画までを確認範囲として報告する。
+描画確認はまずPillowによる簡易描画で位置と構造を見る。図表・SmartArt・画像を含む場合は、続けてPowerPoint互換描画で字形・影・図表・cropの見え方を確認する。互換描画の手段が無ければ、その項目を未確認として最終合格を止める。これらを含まない基本図形だけのデッキでは、簡易描画を確認範囲として報告できる。
 
 - はみ出した箱は赤枠で示され、標準出力にページと図形名が出る。
 - 和文の書体が無い環境では和文が文字幅どおりの灰色バーになる。レイアウトの確認には足りるが、字形・禁則・記号の欠けは判定できない。報告に「和文は幅のみ確認」と書く。
@@ -133,7 +137,7 @@ subprocess.run([sys.executable, "scripts/qa_evidence.py", "check",
                 "qa/qa-evidence.json"], check=True)
 ```
 
-`check` は個別previewが全ページ分かつ固有であること、一覧previewがあること、各判定に根拠があることを確かめる。PPTXと画像のSHA-256も照合し、証跡作成後に差し替わっていれば再確認を求める。画像の存在を目視の代用にはしない。仕様書がない外部デッキの単独監査では、実装一致と対応表を「対象外」と報告し、形式的QAとデザイン的QAの分離、個別・一覧の目視証跡は維持する。
+`check` は個別previewが全ページ分かつ固有であること、一覧previewがあること、各判定に根拠があることを確かめる。PPTXと画像のSHA-256も照合し、証跡作成後に差し替わっていれば再確認を求める。図表・SmartArt・画像があれば `native_render_review` を必須にし、PowerPoint互換描画を確認できないまま合格にしない。画像の存在を目視の代用にはしない。仕様書がない外部デッキの単独監査では、実装一致と対応表を「対象外」と報告し、形式的QAとデザイン的QAの分離、個別・一覧の目視証跡は維持する。
 
 ### 5. 報告
 

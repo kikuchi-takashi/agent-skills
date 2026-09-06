@@ -10,13 +10,24 @@ subprocess.run([sys.executable, "<skills>/pptx-review/scripts/extract_style.py",
                 "--json-out", "deck/design-lock.json", "--md-out", "deck/design-lock.md"])
 ```
 
-`design-lock.md` に、タイトルの位置・幅・サイズ・太さ・色・揃え、本文のサイズの語彙・左端・行間・箇条書き記号、出典の位置とサイズ、余白、使用中の書体と色、レイアウトの使用回数、そして役割ごとの**複製元**が入る。
+`design-lock.md` に、タイトルの位置・幅・サイズ・太さ・色・揃え、本文のサイズの語彙・左端・行間・箇条書き記号、出典の位置とサイズ、余白、使用中の書体と色、レイアウトの使用回数、そして**レイアウトごとの**役割別複製元が入る。
 
 この文書が「正」になる。以降の判断はここを参照し、記憶や見た目の印象で決めない。
 
-## 2. 複製元から作る（新規に組み立てない）
+## 2. 同じレイアウトの複製元から作る
 
-`design-lock.md` の「複製元」に、タイトル・本文・出典それぞれの既存図形が書いてある。新しい要素は、**その図形を複製して文言だけ差し替える。** ただし、次の `copy.deepcopy` が安全なのは、relationshipを持たないテキストボックスと基本図形だけである。画像、図表、SmartArt、埋め込みオブジェクト、動画、ハイパーリンク付き図形を別スライドへ要素単位でコピーしてはいけない。`r:embed` / `r:link` だけが移り、移植先の `.rels` が無いと内容が消える。
+`design-lock.md` の「レイアウト別の設計値と複製元」から、編集対象と同じレイアウト名のtitle/body/sourceを選ぶ。全体多数派の複製元は旧形式との互換用であり、比較ページの本文へ通常本文ページの複製元を流用しない。該当レイアウトに複製元が無ければ、図形単位ではなくページ全体を複製するか、実装仕様書を作って再設計する。
+
+単一段落の文言差替は、直接 `run.text` を操作せず、安全経路を使う。書式・座標・text frameが変わらず、自動伸長・自動縮小がなく、必要寸法が箱の90%以下のときだけ出力される。
+
+```bash
+python3 <skills>/pptx-edit/scripts/safe_text_replace.py deck/original.pptx deck/edited.pptx \
+  --slide 6 --shape-id 12 --text-file deck/replacement.txt
+```
+
+複数段落や箇条書きは、このスクリプトが意図的に拒否する。段落構造を維持して個別にrunを変え、直後にedit contract付きの `layout_guard` を通す。
+
+次の低水準例が必要なのは、relationshipを持たない基本図形を同一レイアウト内で追加する場合だけである。画像、図表、SmartArt、埋め込みオブジェクト、動画、ハイパーリンク付き図形を別スライドへ要素単位でコピーしてはいけない。
 
 ```python
 import copy
@@ -28,7 +39,7 @@ donor = next(sh for sh in prs.slides[2].shapes if sh.name == "本文 3")   # des
 target = prs.slides[5]
 new_el = copy.deepcopy(donor._element)
 target.shapes._spTree.append(new_el)
-# 位置だけ変え、書式は触らない
+# 同じレイアウト内で、契約に記載した位置だけ変え、書式は触らない
 new_shape = target.shapes[-1]
 # 複製元の位置も一緒に写るので、必ず置き直す。書式（書体・サイズ・色・行間）だけを引き継ぐ。
 new_shape.left = Inches(0.6)                                             # design-lock.md の本文左端
@@ -44,13 +55,13 @@ for para in new_shape.text_frame.paragraphs:
 
 画像・図表などrelationshipを持つ要素が必要なら、要素ではなくスライド全体と関連部品を `ooxml-editing.md` の手順で複製する。画像だけを差し替える場合は、新しい画像を `add_picture` で追加して元図形の位置・寸法・crop・回転・重ね順を移し、元図形を削除する。図表は同じスライド上で `replace_data` し、系列数やカテゴリ数を変えた場合は軸・凡例・ラベルをPowerPoint互換描画で確認する。
 
-複製すれば、書体・サイズ・色・行間・箇条書き記号・余白がすべて既存のまま引き継がれる。**位置と大きさは引き継がない。** 複製元の座標と箱の大きさも一緒に写るので、`design-lock.md` の値で置き直す。忘れると lint に `MARGIN_DRIFT`（位置）や `TEXT_OVERFLOW_LIKELY`（高さ不足）が出る。ゼロから `add_textbox` すると、PowerPoint の既定値（Calibri 18pt 黒、行間 1.0）になり、それが「浮いた」ページの正体になる。
+複製すれば、書体・サイズ・色・行間・箇条書き記号・余白が引き継がれる。ただし座標を変える必要が無いなら、位置と大きさも含めて触らない。位置変更が必要なときだけedit contractに期待する変更を書き、`layout_guard --contract --strict` で照合する。ゼロから `add_textbox` するとPowerPointの既定書式が入り、そのページだけ浮く。
 
 **複製できないときだけ**、`design-lock.md` の値を明示的に指定して作る。その場合も値は文書から写す。
 
 ## 3. 新しいページはレイアウトごと複製する
 
-ページを足すときは、同じ役割の既存ページを複製してから中身を差し替える（`ooxml-editing.md` 3節）。空白ページに要素を並べない。複製元は、追加したい役割にいちばん近いページを選ぶ。
+ページを足すときは、同じ役割・同じレイアウトの既存ページを `scripts/clone_slide.py` で複製してから中身を差し替える（`ooxml-editing.md` 3節）。空白ページに要素を並べない。図表・SmartArt・OLE・動画・アニメーションを含み安全複製が拒否された場合は、共有部品のまま続行しない。
 
 - 主張＋証拠の追加 → 既存の主張＋証拠ページを複製
 - 比較の追加 → 既存の比較ページを複製

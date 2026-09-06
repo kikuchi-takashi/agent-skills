@@ -46,6 +46,14 @@ Presentation("out.pptx")                          # 再オープン検査
 
 ## 3. スライドの複製（テンプレ流し込みの基本）
 
+まず安全な複製スクリプトを使う。画像と外部リンクのrelationshipは移植先へ付け替え、図表・SmartArt・OLE・動画・アニメーションなど独立複製が保証できない部品は、出力を書かずに拒否する。
+
+```bash
+python3 <skills>/pptx-edit/scripts/clone_slide.py deck/original.pptx deck/with-copy.pptx --slide 4
+```
+
+拒否されたスライドを図形XMLだけで複製しない。以下の手順は、複合部品を個別partまで追跡できる場合に限る。
+
 1. `ppt/slides/slideN.xml` を `slideM.xml`（未使用の番号）にコピーする。
 2. `ppt/slides/_rels/slideN.xml.rels` を `slideM.xml.rels` にコピーする。ノートへの参照（`notesSlide`）は削除するか、ノートも複製して付け替える。
 3. `[Content_Types].xml` に `<Override PartName="/ppt/slides/slideM.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>` を追加する。
@@ -53,7 +61,7 @@ Presentation("out.pptx")                          # 再オープン検査
 5. `ppt/presentation.xml` の `<p:sldIdLst>` に `<p:sldId id="<既存最大+1>" r:id="<新rId>"/>` を挿入したい位置に追加する。
 6. 複製したスライドの `slideM.xml` 内の図形 `id` は同じでも開けるが、`cNvPr` の `id` をずらしておくと後の編集で混乱しない。
 
-複製元が図表・SmartArt・埋め込みオブジェクトを持つ場合、複製後の両方が同じ部品を参照する。片方の図表を変えると他方も変わる。図表ごと複製するなら `ppt/charts/chartN.xml` とその rels、`[Content_Types].xml` の登録も複製して付け替える。
+複製元が図表・SmartArt・埋め込みオブジェクトを持つ場合、複製後の両方が同じ部品を参照する。片方の図表を変えると他方も変わる。図表ごと複製するなら `ppt/charts/chartN.xml` とその rels、埋め込みworkbook、`[Content_Types].xml` の登録まで複製して付け替える。これを自動検証できない環境では複製作業を止める。
 
 図形要素だけを `copy.deepcopy` して別スライドへ貼る方法は、テキストボックスと基本図形に限る。画像・図表・SmartArt・埋め込みオブジェクト・リンクは `r:embed` / `r:link` がスライド固有の `.rels` を参照するため、XMLだけの移植では壊れる。編集後は `pptx_lint.py` の `BROKEN_RELATIONSHIP_REFERENCE` が0件であることを確認する。
 

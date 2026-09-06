@@ -31,6 +31,25 @@ def mode(counter, default=None):
     return counter.most_common(1)[0][0] if counter else default
 
 
+def choose_donors(candidates, body_left, body_sizes, title_sizes):
+    """同じ設計系統の中から役割別の複製元を選ぶ。"""
+    result = {}
+    main_x, main_body, main_title = mode(body_left), mode(body_sizes), mode(title_sizes)
+    for role, cands in candidates.items():
+        if role == "body":
+            best = min(cands, key=lambda c: (
+                abs(c["size"] - main_body) if main_body else 0,
+                abs(c["box"][0] - main_x) if main_x is not None else 0,
+                c["slide"]))
+        elif role == "title" and main_title:
+            best = min(cands, key=lambda c: (abs(c["size"] - main_title), c["slide"]))
+        else:
+            best = cands[0]
+        result[role] = {"slide": best["slide"], "shape": best["shape"],
+                        "box_in": best["box"], "size_pt": best["size"]}
+    return result
+
+
 def shape_role(shape, title_shape, ch):
     if shape is title_shape:
         return "title"
@@ -94,6 +113,7 @@ def extract(pkg):
     layouts = Counter()
     donors = {}
     donor_candidates = {}
+    by_layout = {}
     geoms = Counter()
     per_slide = []
     for index, part in enumerate(slides, start=1):
@@ -101,9 +121,17 @@ def extract(pkg):
             continue
         layout = pkg.related(part, "/slideLayout")
         master = pkg.related(layout, "/slideMaster") if layout and layout in pkg.names else None
+        layout_name = layout or "(no-layout)"
         if layout and layout in pkg.names:
             name_el = pkg.xml(layout).find(".//" + L.q("p", "cSld"))
-            layouts[name_el.get("name", layout) if name_el is not None else layout] += 1
+            layout_name = name_el.get("name", layout) if name_el is not None else layout
+            layouts[layout_name] += 1
+        lp = by_layout.setdefault(layout_name, {
+            "slide_count": 0, "title_boxes": Counter(), "title_sizes": Counter(),
+            "body_sizes": Counter(), "body_left": Counter(), "source_y": Counter(),
+            "donor_candidates": {},
+        })
+        lp["slide_count"] += 1
         layout_pos = L.placeholder_positions(pkg, layout) if layout and layout in pkg.names else {}
         master_pos = L.placeholder_positions(pkg, master) if master and master in pkg.names else {}
         shapes = L.collect_shapes(pkg, part, layout_pos, master_pos)
@@ -145,11 +173,13 @@ def extract(pkg):
                 if role == "title":
                     if size:
                         title_sizes[round(size)] += 1
+                        lp["title_sizes"][round(size)] += 1
                     title_bold[any(r["bold"] for r in para["runs"] if r["text"].strip())] += 1
                     title_align[para["algn"]] += 1
                 elif role == "body":
                     if size:
                         body_sizes[round(size)] += 1
+                        lp["body_sizes"][round(size)] += 1
                     # 実寸(spcPts)で書かれていれば、文字サイズに対する比に直して数える
                     ratio = (para["line_pts"] / size if para.get("line_pts") and size
                              else para["line_spacing"])
@@ -161,10 +191,13 @@ def extract(pkg):
                         source_sizes[round(size)] += 1
             if role == "title" and not is_cover:
                 title_boxes[(round(x, 2), round(y, 2), round(w, 2), round(h, 2))] += 1
+                lp["title_boxes"][(round(x, 2), round(y, 2), round(w, 2), round(h, 2))] += 1
             elif role == "body":
                 body_left[round(x, 2)] += 1
+                lp["body_left"][round(x, 2)] += 1
             elif role == "source":
                 source_y[round(y, 2)] += 1
+                lp["source_y"][round(y, 2)] += 1
             if not is_cover:
                 margins["left"].append(x)
                 margins["right"].append(cw - (x + w))
@@ -172,6 +205,10 @@ def extract(pkg):
                 margins["bottom"].append(ch - (y + h))
             if not is_cover and para_has_sizes(s):
                 donor_candidates.setdefault(role, []).append(
+                    {"slide": index, "shape": s["name"] or s["id"],
+                     "box": [round(v, 2) for v in s["box"]],
+                     "size": max((max(pp["sizes"]) for pp in s["paragraphs"] if pp["sizes"]), default=0)})
+                lp["donor_candidates"].setdefault(role, []).append(
                     {"slide": index, "shape": s["name"] or s["id"],
                      "box": [round(v, 2) for v in s["box"]],
                      "size": max((max(pp["sizes"]) for pp in s["paragraphs"] if pp["sizes"]), default=0)})
@@ -187,24 +224,24 @@ def extract(pkg):
                     hexl = resolve_hex(L.color_of(ln), theme)
                     if hexl:
                         line_colors[hexl] += 1
-        per_slide.append({"index": index, "is_cover": is_cover, "roles": roles})
+        per_slide.append({"index": index, "layout": layout_name,
+                          "is_cover": is_cover, "roles": roles})
 
     # 役割ごとの複製元を選ぶ。本文は「揃え線に載っていて、型スケールの本文サイズ」のものを選ぶ
     # （2段組みの右列や、大きな数字を複製元にしない）。
-    main_x = mode(body_left)
-    main_body = mode(body_sizes)
-    main_title = mode(title_sizes)
-    for role, cands in donor_candidates.items():
-        if role == "body":
-            best = min(cands, key=lambda c: (
-                abs(c["size"] - main_body) if main_body else 0,
-                abs(c["box"][0] - main_x) if main_x is not None else 0,
-                c["slide"]))
-        elif role == "title" and main_title:
-            best = min(cands, key=lambda c: (abs(c["size"] - main_title), c["slide"]))
-        else:
-            best = cands[0]
-        donors[role] = {"slide": best["slide"], "shape": best["shape"], "box_in": best["box"], "size_pt": best["size"]}
+    donors = choose_donors(donor_candidates, body_left, body_sizes, title_sizes)
+    layout_detail = {}
+    for name, lp in by_layout.items():
+        layout_detail[name] = {
+            "slide_count": lp["slide_count"],
+            "title": {"box_in": list(mode(lp["title_boxes"])) if lp["title_boxes"] else None,
+                      "size_pt": mode(lp["title_sizes"])},
+            "body": {"left_x_in": mode(lp["body_left"]),
+                     "sizes_pt": dict(lp["body_sizes"].most_common())},
+            "source": {"y_in": mode(lp["source_y"])},
+            "donors": choose_donors(lp["donor_candidates"], lp["body_left"],
+                                     lp["body_sizes"], lp["title_sizes"]),
+        }
 
     used_colors = Counter()
     used_colors.update(text_colors); used_colors.update(fill_colors); used_colors.update(line_colors)
@@ -226,6 +263,7 @@ def extract(pkg):
         "source": {"y_in": mode(source_y), "size_pt": mode(source_sizes)},
         "margins_in": {k: round(min(v), 2) if v else None for k, v in margins.items()},
         "layouts": dict(layouts.most_common()),
+        "layouts_detail": layout_detail,
         "shape_geometry": dict(geoms.most_common()),
         "donors": donors,
         "slides": per_slide,
@@ -297,10 +335,22 @@ def to_markdown(lock, path):
         "- 塗り図形の形: " + (", ".join("%s（%d）" % kv for kv in p["shape_geometry"].items()) or "なし"),
         "",
         "## 複製元（新しい要素はこれを複製して文言だけ変える）",
+        "",
+        "全体の複製元は互換用。編集では次のレイアウト別複製元を優先し、別レイアウトから借りない。",
     ]
     for role, d in p["donors"].items():
         lines.append("- %s: スライド %d の「%s」（%s pt、元の位置 x %.2f, y %.2f, 幅 %.2f）。**複製後は位置を置き直す。書式だけを引き継ぐ**"
                      % (role, d["slide"], d["shape"], d["size_pt"], d["box_in"][0], d["box_in"][1], d["box_in"][2]))
+    lines += ["", "## レイアウト別の設計値と複製元"]
+    for name, detail in p["layouts_detail"].items():
+        lines.append("### %s（%d枚）" % (name, detail["slide_count"]))
+        lines.append("- タイトル: %s / %s pt" %
+                     (fmt_box(detail["title"]["box_in"]), detail["title"]["size_pt"]))
+        lines.append("- 本文: 左端 x %s / サイズ %s" %
+                     (detail["body"]["left_x_in"], detail["body"]["sizes_pt"] or "なし"))
+        for role, d in detail["donors"].items():
+            lines.append("- 複製元 %s: スライド %d の「%s」" %
+                         (role, d["slide"], d["shape"]))
     lines += ["", "## 変更履歴", "- 抽出時点の値。変更するときは日付と理由を追記する。", ""]
     return "\n".join(lines)
 

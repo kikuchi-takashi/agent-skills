@@ -26,6 +26,9 @@ PALETTE_SCRIPT = ROOT / "pptx-design" / "scripts" / "generate_palette.py"
 SPEC_CHECK = ROOT / "pptx-create" / "scripts" / "check_implementation_spec.py"
 QA_EVIDENCE = ROOT / "pptx-review" / "scripts" / "qa_evidence.py"
 RENDER = ROOT / "pptx-review" / "scripts" / "render_preview.py"
+EXTRACT = ROOT / "pptx-review" / "scripts" / "extract_style.py"
+SAFE_TEXT = ROOT / "pptx-edit" / "scripts" / "safe_text_replace.py"
+CLONE_SLIDE = ROOT / "pptx-edit" / "scripts" / "clone_slide.py"
 ENGINE = ROOT / "pptx-create" / "references" / "engine-notes.md"
 BLOCK = re.search(r"```python\n(.*?)```", ENGINE.read_text(), re.S).group(1).replace(
     'if __name__ == "__main__":\n    build()', "")
@@ -1762,6 +1765,192 @@ def main():
     else:
         failures += 1
         print("NG  全ページへの同一定型所見を目視根拠として認めない")
+
+    # 編集用の設計値は全体多数派だけでなく、レイアウト別に保持する。
+    profile_deck = Presentation()
+    cover = profile_deck.slides.add_slide(profile_deck.slide_layouts[0])
+    cover.shapes.title.text = "表紙"
+    body_slide = profile_deck.slides.add_slide(profile_deck.slide_layouts[1])
+    body_slide.shapes.title.text = "本文レイアウト"
+    body_slide.placeholders[1].text = "本文"
+    profile_path = pathlib.Path(workdir) / "layout-profile.pptx"
+    profile_json = pathlib.Path(workdir) / "layout-profile.json"
+    profile_deck.save(profile_path)
+    profile_run = subprocess.run(
+        [sys.executable, str(EXTRACT), str(profile_path), "--json-out", str(profile_json)],
+        capture_output=True, text=True)
+    profile_data = json.loads(profile_json.read_text(encoding="utf-8"))
+    layout_detail = profile_data["profile"].get("layouts_detail", {})
+    if (profile_run.returncode == 0 and len(layout_detail) >= 2
+            and all("donors" in detail for detail in layout_detail.values())
+            and all("layout" in slide for slide in profile_data["profile"]["slides"])):
+        ok += 1
+        print("ok  複製元と設計値をレイアウト別に抽出")
+    else:
+        failures += 1
+        print("NG  複製元と設計値をレイアウト別に抽出")
+
+    # 単一段落は余裕と書式を検査してから保存し、自動伸長箱は拒否する。
+    from pptx.enum.text import MSO_AUTO_SIZE
+    from pptx.util import Inches, Pt
+    safe_deck = Presentation()
+    safe_slide = safe_deck.slides.add_slide(safe_deck.slide_layouts[6])
+    fixed = safe_slide.shapes.add_textbox(Inches(1), Inches(1), Inches(6), Inches(1))
+    fixed.name = "Safe Body"
+    fixed.text_frame.auto_size = MSO_AUTO_SIZE.NONE
+    fixed_run = fixed.text_frame.paragraphs[0].add_run()
+    fixed_run.text, fixed_run.font.size = "短い本文", Pt(20)
+    grow = safe_slide.shapes.add_textbox(Inches(1), Inches(3), Inches(2), Inches(0.5))
+    grow.name = "Growing Body"
+    grow.text_frame.auto_size = MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
+    grow_run = grow.text_frame.paragraphs[0].add_run()
+    grow_run.text, grow_run.font.size = "短文", Pt(20)
+    image_buf = io.BytesIO()
+    Image.new("RGB", (40, 30), (20, 100, 140)).save(image_buf, "PNG")
+    image_buf.seek(0)
+    safe_slide.shapes.add_picture(image_buf, Inches(8), Inches(1), Inches(2), Inches(1.5))
+    safe_input = pathlib.Path(workdir) / "safe-edit-input.pptx"
+    safe_output = pathlib.Path(workdir) / "safe-edit-output.pptx"
+    safe_deck.save(safe_input)
+    safe_text_run = subprocess.run(
+        [sys.executable, str(SAFE_TEXT), str(safe_input), str(safe_output),
+         "--slide", "1", "--shape-name", "Safe Body", "--text", "差し替え後"],
+        capture_output=True, text=True)
+    if safe_text_run.returncode == 0 and safe_output.exists():
+        ok += 1
+        print("ok  文言差替は書式・幾何・箱の余裕を検査してから保存")
+    else:
+        failures += 1
+        print("NG  文言差替は書式・幾何・箱の余裕を検査してから保存")
+
+    rejected_output = pathlib.Path(workdir) / "autogrow-output.pptx"
+    rejected_text = subprocess.run(
+        [sys.executable, str(SAFE_TEXT), str(safe_input), str(rejected_output),
+         "--slide", "1", "--shape-name", "Growing Body", "--text", "長い差し替え文言"],
+        capture_output=True, text=True)
+    if rejected_text.returncode == 1 and not rejected_output.exists() and "autogrow" in rejected_text.stderr:
+        ok += 1
+        print("ok  自動伸長する箱への文言差替を出力前に拒否")
+    else:
+        failures += 1
+        print("NG  自動伸長する箱への文言差替を出力前に拒否")
+
+    cloned_path = pathlib.Path(workdir) / "safe-cloned.pptx"
+    clone_run = subprocess.run(
+        [sys.executable, str(CLONE_SLIDE), str(safe_input), str(cloned_path), "--slide", "1"],
+        capture_output=True, text=True)
+    cloned_prs = Presentation(str(cloned_path)) if cloned_path.exists() else None
+    if (clone_run.returncode == 0 and cloned_prs is not None and len(cloned_prs.slides) == 2
+            and any(shape.shape_type == 13 for shape in cloned_prs.slides[1].shapes)):
+        ok += 1
+        print("ok  画像relationshipを付け替えて単純スライドを複製")
+    else:
+        failures += 1
+        print("NG  画像relationshipを付け替えて単純スライドを複製")
+
+    chart_deck = Presentation()
+    chart_slide = chart_deck.slides.add_slide(chart_deck.slide_layouts[6])
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+    chart_data = CategoryChartData()
+    chart_data.categories = ["A", "B"]
+    chart_data.add_series("系列", [1, 2])
+    chart_slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(1),
+                                 Inches(5), Inches(3), chart_data)
+    chart_path = pathlib.Path(workdir) / "clone-chart-input.pptx"
+    chart_out = pathlib.Path(workdir) / "clone-chart-output.pptx"
+    chart_deck.save(chart_path)
+    clone_reject = subprocess.run(
+        [sys.executable, str(CLONE_SLIDE), str(chart_path), str(chart_out), "--slide", "1"],
+        capture_output=True, text=True)
+    if clone_reject.returncode == 1 and not chart_out.exists() and "chart" in clone_reject.stderr:
+        ok += 1
+        print("ok  共有事故になる図表スライドの自動複製を拒否")
+    else:
+        failures += 1
+        print("NG  共有事故になる図表スライドの自動複製を拒否")
+
+    contract_path = pathlib.Path(workdir) / "edit-contract.json"
+    contract_init = subprocess.run(
+        [sys.executable, str(LAYOUT_GUARD), str(safe_input),
+         "--init-contract", str(contract_path)], capture_output=True, text=True)
+    wrong_contract = subprocess.run(
+        [sys.executable, str(LAYOUT_GUARD), sample, safe_output,
+         "--contract", str(contract_path)], capture_output=True, text=True)
+    if (contract_init.returncode == 0 and wrong_contract.returncode == 2
+            and "before_sha256" in wrong_contract.stderr):
+        ok += 1
+        print("ok  編集契約を原本ハッシュへ固定して流用を拒否")
+    else:
+        failures += 1
+        print("NG  編集契約を原本ハッシュへ固定して流用を拒否")
+
+    transformed = Presentation(str(safe_input))
+    transformed.slides[0].shapes[0].rotation = 18
+    transformed_path = pathlib.Path(workdir) / "transform-and-media.pptx"
+    transformed.save(transformed_path)
+    replacement_image = io.BytesIO()
+    Image.new("RGB", (40, 30), (180, 40, 30)).save(replacement_image, "PNG")
+    replacement_blob = replacement_image.getvalue()
+    repacked = pathlib.Path(workdir) / "transform-and-media-repacked.pptx"
+    with zipfile.ZipFile(transformed_path) as zin, zipfile.ZipFile(repacked, "w", zipfile.ZIP_DEFLATED) as zout:
+        media_done = False
+        for item in zin.infolist():
+            blob = zin.read(item.filename)
+            if item.filename.startswith("ppt/media/") and not media_done:
+                blob, media_done = replacement_blob, True
+            zout.writestr(item, blob)
+    expanded_report = pathlib.Path(workdir) / "expanded-layout-guard.json"
+    subprocess.run([sys.executable, str(LAYOUT_GUARD), str(safe_input), str(repacked),
+                    "--json-out", str(expanded_report)], capture_output=True)
+    expanded_codes = {f["code"] for f in json.loads(expanded_report.read_text())["findings"]}
+    if {"SHAPE_TRANSFORM_CHANGED", "RELATED_PART_CHANGED"} <= expanded_codes:
+        ok += 1
+        print("ok  回転・反転と関連画像部品の変化を比較検出")
+    else:
+        failures += 1
+        print("NG  回転・反転と関連画像部品の変化を比較検出")
+
+    native_prefix = pathlib.Path(workdir) / "native-qa" / "preview"
+    subprocess.run([sys.executable, str(RENDER), str(safe_input),
+                    "--out", str(native_prefix), "--sheet"], capture_output=True)
+    native_spec = pathlib.Path(workdir) / "native-qa" / "spec.json"
+    native_spec.parent.mkdir(parents=True, exist_ok=True)
+    native_spec.write_text(json.dumps({"slides": [{"n": 1, "title": "",
+        "archetype": "claim-evidence", "implementation": {
+            "function": "slide_claim_evidence", "design_intent": "画像と本文を対比する"}}]},
+        ensure_ascii=False), encoding="utf-8")
+    native_evidence_path = native_spec.parent / "evidence.json"
+    native_map = native_spec.parent / "map.md"
+    subprocess.run([sys.executable, str(QA_EVIDENCE), "init", str(safe_input),
+                    "--spec", str(native_spec), "--preview-prefix", str(native_prefix),
+                    "--json-out", str(native_evidence_path), "--map-out", str(native_map)],
+                   capture_output=True)
+    native_evidence = json.loads(native_evidence_path.read_text(encoding="utf-8"))
+    native_evidence["formal_qa"].update(status="pass", evidence=["a", "b", "c", "d"])
+    native_evidence["design_qa"].update(status="pass", evidence=["a", "b", "c", "d"])
+    native_evidence["sheet_review"].update(status="pass", evidence="一覧表示を目視して確認済み")
+    native_evidence["slides"][0]["implementation_match"] = {
+        "status": "pass", "evidence": "p.1の実装対応を確認済み"}
+    native_evidence["slides"][0]["individual_review"] = {
+        "status": "pass", "evidence": "p.1を個別表示して確認済み"}
+    native_evidence_path.write_text(json.dumps(native_evidence, ensure_ascii=False), encoding="utf-8")
+    native_missing = subprocess.run(
+        [sys.executable, str(QA_EVIDENCE), "check", str(native_evidence_path)],
+        capture_output=True, text=True)
+    native_evidence["native_render_review"].update(
+        status="pass", evidence="PowerPoint互換描画で画像cropと文字位置を確認済み")
+    native_evidence_path.write_text(json.dumps(native_evidence, ensure_ascii=False), encoding="utf-8")
+    native_complete = subprocess.run(
+        [sys.executable, str(QA_EVIDENCE), "check", str(native_evidence_path)],
+        capture_output=True, text=True)
+    if (native_missing.returncode == 1 and "PowerPoint互換描画" in native_missing.stderr
+            and native_complete.returncode == 0):
+        ok += 1
+        print("ok  図表・画像ではPowerPoint互換描画の証跡を必須化")
+    else:
+        failures += 1
+        print("NG  図表・画像ではPowerPoint互換描画の証跡を必須化")
 
     print("\n%d/%d 合格" % (ok, ok + failures))
     return 1 if failures else 0

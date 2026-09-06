@@ -77,6 +77,8 @@ def init(args):
         missing.append(str(sheet))
     if missing:
         raise ValueError("preview が不足: %s" % ", ".join(missing))
+    complex_kinds = sorted({kind for slide in slides for kind in slide["actual_kinds"]
+                            if kind in ("chart", "graphic", "picture")})
     manifest = {
         "pptx": args.pptx, "pptx_sha256": digest(args.pptx),
         "formal_qa": {"status": "pending", "evidence": [],
@@ -85,6 +87,12 @@ def init(args):
                       "required": ["signature", "form-choice", "hero", "rhythm"]},
         "sheet_review": {"status": "pending", "preview": str(sheet),
                          "preview_sha256": digest(sheet), "evidence": ""},
+        "native_render_review": {
+            "required": bool(complex_kinds),
+            "kinds": complex_kinds,
+            "status": "pending" if complex_kinds else "not-applicable",
+            "evidence": "" if complex_kinds else "簡易描画で扱える図形だけ",
+        },
         "slides": slides,
     }
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -124,6 +132,9 @@ def check(args):
     for name in ("formal_qa", "design_qa", "sheet_review"):
         if not passed_block(manifest.get(name, {})):
             findings.append("%s が pass でなく、根拠も揃っていない" % name)
+    native = manifest.get("native_render_review", {})
+    if native.get("required") and not passed_block(native):
+        findings.append("図表・画像等があるためPowerPoint互換描画の確認が必要")
     slides = manifest.get("slides", [])
     if not slides:
         findings.append("slides が空")
