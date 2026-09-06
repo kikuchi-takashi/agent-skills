@@ -4,7 +4,7 @@ description: "既存のPowerPoint（.pptx/.potx）を、元のデザインに揃
 license: MIT
 compatibility: "Python 3.9+ と python-pptx（lxml、Pillow）。構造変更は zipfile と XML 編集。設計値の抽出・検査・描画は pptx-review 同梱のスクリプト。ハーネスが PowerPoint 互換の描画を提供する場合は最終確認に使う。"
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
   publisher: "agent-skills"
   bundle: pptx-suite
 ---
@@ -51,6 +51,7 @@ pptx-create の工程0と同じ表で経路を決める。`python-pptx` が無�
 | 図形の位置・大きさ・色 | python-pptx の shape 属性 |
 | 図表の数値 | `chart.replace_data(chart_data)` |
 | 表のセル | `cell.text_frame.paragraphs[0].runs[0].text` |
+| 図表・表の**新規追加** | 同じデッキに既存の図表・表があれば複製して数値を差し替える（書式が揃う）。無ければ `add_chart` / `add_table` で作り、色・書体は `design-lock.json` の抽出値に合わせる。**画像として貼らない** |
 | スライドの追加（テンプレのレイアウトから） | `prs.slides.add_slide(layout)` |
 | スライドの複製・削除・並べ替え、テンプレ流し込み | python-pptx では複製ができない。`references/ooxml-editing.md` の手順で XML を直接扱う |
 | 装飾の除去（飾り線・色帯・絵文字） | `references/cleanup-checklist.md` |
@@ -73,6 +74,7 @@ pptx-create の工程0と同じ表で経路を決める。`python-pptx` が無�
 - pptx-review があれば `--lock deck/design-lock.json --baseline deck/before/lint.json` を付けて lint を通し、**新しく増えた指摘**を 0 にする。元からある指摘は `inherited` として集計され、報告に書く。
 - **統一性の指摘**（`TITLE_POSITION_DRIFT`、`TITLE_SIZE_DRIFT`、`MARGIN_DRIFT`、`BODY_SIZE_DRIFT`、`PALETTE_DRIFT`）が自分の触ったページに出ていたら、必ず直す。これが「修正したページだけデザインが違う」の直接の検出である。
 - 描画の一覧（`render_preview.py --sheet`）で、触ったページが他と同じ骨格に見えるかを確かめる。1枚ずつ見ると気づかない。
+- 触ったページに図表・表を足したなら、`Presentation` で開き直して `shape.has_chart` / `shape.has_table` が真であることを確かめる。lint の `FULL_PAGE_PICTURE` はページの85%以上を占める画像しか見ないので、ページの一部に貼った画像の図表は検出できない。
 - 触ったページを描画して1枚ずつ見る。加えて全体を一覧し、他のページとの整合（タイトル位置、余白、フッター）を確認する。描画の手順は pptx-create の `references/qa.md` ゲート3にある。
 - テキストを再度書き出し、変更前との差分が `deck/changes.md` の範囲に収まっていることを確認する。
 
@@ -90,6 +92,7 @@ pptx-create の工程0と同じ表で経路を決める。`python-pptx` が無�
 
 - 元ファイルを上書きしない。
 - 図表や数値の意味を変えない。変えるなら利用者の指示を引用する。
+- **図表・表をネイティブに保つ。** 既存のネイティブな図表を画像に置き換えない。追加するときも `add_chart` / `add_table` で作る。画像にしてよいのは写真・ロゴ・PowerPoint に形の無い図（サンキー、ネットワーク図）だけ。
 - テーマに無い色・書体を足さない。
 - 新しい要素は複製から作る。空の図形に書式を手で設定しない。
 - 構造変更（追加・削除・並べ替え）を先に、内容変更を後に。
